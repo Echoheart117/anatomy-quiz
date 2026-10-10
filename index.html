@@ -1,0 +1,443 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>解剖学刷题本</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;700&family=Noto+Serif+SC:wght@600;900&family=IBM+Plex+Mono:wght@500&display=swap">
+<style>
+/* Layout: a one-screen study desk. Left rail = chapter map + question grid; right = the current question as a single sheet. On phones the rail becomes a drawer. */
+:root{
+  --bg:#eef1f2; --sheet:#fbfcfc; --ink:#1a2226; --muted:#5f6d73; --line:#d5dcdf;
+  --accent:#2d4f8f; --accent-soft:#e2e8f3;
+  --ok:#2b7a55; --ok-soft:#e1f1e8; --bad:#b8402c; --bad-soft:#f7e3de; --star:#b7811d;
+  --f-display:"Noto Serif SC","Songti SC",serif;
+  --f-body:"Noto Sans SC","PingFang SC","Microsoft YaHei",system-ui,sans-serif;
+  --f-mono:"IBM Plex Mono",ui-monospace,Menlo,monospace;
+  --r:10px;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#12171a; --sheet:#1a2125; --ink:#e3e8ea; --muted:#93a2a8; --line:#2c373c;
+  --accent:#8fb0ec; --accent-soft:#223149; --ok:#6cc79a; --ok-soft:#173528; --bad:#ee8a76; --bad-soft:#3d211b; --star:#e2b354; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#12171a; --sheet:#1a2125; --ink:#e3e8ea; --muted:#93a2a8; --line:#2c373c;
+  --accent:#8fb0ec; --accent-soft:#223149; --ok:#6cc79a; --ok-soft:#173528; --bad:#ee8a76; --bad-soft:#3d211b; --star:#e2b354; color-scheme:dark}
+html,body{height:100%}
+[hidden]{display:none!important}
+body{margin:0}
+body{background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:15px;line-height:1.7}
+button{font:inherit;color:inherit;cursor:pointer}
+button:focus-visible,a:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.app{display:grid;grid-template-columns:300px minmax(0,1fr);height:100%}
+/* rail */
+.rail{border-right:1px solid var(--line);display:flex;flex-direction:column;min-height:0;background:var(--bg)}
+.brand{padding:18px 18px 10px;display:flex;align-items:baseline;gap:8px}
+.brand h1{font-family:var(--f-display);font-weight:900;font-size:20px;margin:0;letter-spacing:.02em}
+.brand span{color:var(--muted);font-size:12px}
+.modes{display:flex;gap:6px;padding:0 18px 12px;flex-wrap:wrap}
+.chip{border:1px solid var(--line);background:transparent;border-radius:999px;padding:3px 11px;font-size:13px;color:var(--muted)}
+.chip[aria-pressed="true"]{background:var(--ink);color:var(--sheet);border-color:var(--ink)}
+.chip .c{font-family:var(--f-mono);font-size:11px;margin-left:4px;opacity:.8}
+.chlist{overflow:auto;flex:1;padding:0 10px 16px;min-height:0}
+.part{font-size:11px;letter-spacing:.12em;color:var(--muted);padding:12px 8px 4px}
+.ch{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:2px 8px;width:100%;text-align:left;border:0;background:transparent;border-radius:8px;padding:7px 8px}
+.ch:hover{background:var(--accent-soft)}
+.ch[aria-current="true"]{background:var(--sheet);box-shadow:0 0 0 1px var(--line)}
+.ch b{font-weight:500;font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ch small{font-family:var(--f-mono);font-size:11px;color:var(--muted);align-self:center}
+.bar{grid-column:1/-1;height:3px;border-radius:2px;background:var(--line);overflow:hidden;display:flex}
+.bar i{display:block;height:100%}
+.bar .r{background:var(--ok)}.bar .w{background:var(--bad)}
+/* main */
+.main{display:flex;flex-direction:column;min-height:0;min-width:0}
+.top{display:flex;align-items:center;gap:10px;padding:12px 20px;border-bottom:1px solid var(--line);flex-wrap:wrap}
+.menu{display:none;border:1px solid var(--line);background:var(--sheet);border-radius:8px;padding:4px 10px}
+.crumb{font-family:var(--f-display);font-weight:600;font-size:17px;min-width:0;flex:1}
+.crumb small{display:block;font-family:var(--f-body);font-weight:400;font-size:12px;color:var(--muted)}
+.types{display:flex;gap:6px;flex-wrap:wrap}
+.stage{flex:1;overflow:auto;padding:24px 20px 32px;min-height:0}
+.sheet{max-width:760px;margin:0 auto;background:var(--sheet);border:1px solid var(--line);border-radius:var(--r);padding:26px 28px 22px}
+.qhead{display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap}
+.tag{font-size:12px;padding:1px 9px;border-radius:5px;background:var(--accent-soft);color:var(--accent);font-weight:500}
+.qno{font-family:var(--f-mono);font-size:13px;color:var(--muted)}
+.qhead .sp{flex:1}
+.icon{border:1px solid var(--line);background:transparent;border-radius:7px;padding:2px 10px;font-size:13px;color:var(--muted)}
+.icon[aria-pressed="true"]{color:var(--star);border-color:var(--star)}
+.icon.mark[aria-pressed="true"]{color:var(--bad);border-color:var(--bad);background:var(--bad-soft)}
+.exp textarea{flex:1;min-height:0;margin:12px;padding:10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink);font:13px/1.7 var(--f-body);resize:none}
+.exp .vbox{height:min(760px,100%)}
+.exp .msg{font-size:13px;color:var(--ok)}
+.icon.note[aria-pressed="true"]{color:var(--accent);border-color:var(--accent);background:var(--accent-soft)}
+.notebox{margin-top:18px;border:1px solid var(--line);border-left:3px solid var(--accent);border-radius:8px;padding:10px 12px;background:var(--bg)}
+.notebox h4{margin:0 0 6px;font-size:12px;letter-spacing:.1em;color:var(--accent);font-weight:500;display:flex;gap:8px;align-items:center}
+.notebox h4 .sp{flex:1}
+.notebox .txt{white-space:pre-wrap;word-break:break-word;line-height:1.8}
+.notebox textarea{width:100%;box-sizing:border-box;min-height:110px;padding:8px 10px;border:1px solid var(--line);border-radius:6px;background:var(--sheet);color:var(--ink);font:15px/1.7 var(--f-body);resize:vertical}
+.notebox .hint{font-size:12px;color:var(--muted);margin-top:4px}
+.linkbtn{border:0;background:none;padding:0;font-size:12px;color:var(--muted);text-decoration:underline;text-underline-offset:2px}
+.linkbtn:hover{color:var(--accent)}
+.case{font-size:15px;line-height:1.75;color:var(--muted,inherit);border-left:3px solid var(--line,currentColor);padding:2px 0 2px 12px;margin:0 0 12px;white-space:pre-wrap}
+.stem{font-size:18px;line-height:1.8;margin:0 0 18px;white-space:pre-wrap;word-break:break-word}
+.stem .blank{display:inline-block;min-width:4.5em;border-bottom:1.5px solid var(--ink);text-align:center;padding:0 4px;margin:0 2px;line-height:1.4}
+.stem .blank.on{color:var(--ok);font-weight:500;border-color:var(--ok)}
+.fig{margin:0 0 16px;text-align:center}
+.fig img{max-height:320px;border-radius:6px;background:#fff;padding:6px;border:1px solid var(--line)}
+.fig figcaption{font-size:12px;color:var(--muted)}
+.opts{display:flex;flex-direction:column;gap:8px}
+.opt{display:grid;grid-template-columns:30px minmax(0,1fr) auto;align-items:center;gap:10px;text-align:left;border:1px solid var(--line);background:transparent;border-radius:9px;padding:10px 12px;font-size:16px}
+.opt:hover:not(:disabled){border-color:var(--accent)}
+.opt .k{font-family:var(--f-mono);width:26px;height:26px;border-radius:50%;display:grid;place-items:center;border:1px solid var(--line);font-size:13px}
+.opt.sel{border-color:var(--accent);background:var(--accent-soft)}
+.opt.sel .k{background:var(--accent);color:var(--sheet);border-color:var(--accent)}
+.opt.right{border-color:var(--ok);background:var(--ok-soft)}
+.opt.right .k{background:var(--ok);color:var(--sheet);border-color:var(--ok)}
+.opt.wrong{border-color:var(--bad);background:var(--bad-soft)}
+.opt.wrong .k{background:var(--bad);color:var(--sheet);border-color:var(--bad)}
+.opt:disabled{cursor:default}
+.opt .mk{font-size:13px;font-weight:500}
+.opt.right .mk{color:var(--ok)}.opt.wrong .mk{color:var(--bad)}
+.verdict{margin-top:16px;padding:10px 14px;border-radius:9px;font-weight:500;display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+.verdict.ok{background:var(--ok-soft);color:var(--ok)}
+.verdict.bad{background:var(--bad-soft);color:var(--bad)}
+.verdict .ans{font-family:var(--f-mono)}
+.answer{margin-top:16px;border-top:1px dashed var(--line);padding-top:14px;white-space:pre-wrap;line-height:1.85;word-break:break-word}
+.answer h4{margin:0 0 6px;font-size:12px;letter-spacing:.1em;color:var(--muted);font-weight:500}
+.actions{display:flex;gap:8px;margin-top:18px;flex-wrap:wrap;align-items:center}
+.btn{border:1px solid var(--line);background:var(--sheet);border-radius:8px;padding:7px 16px;font-size:14px}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--sheet);font-weight:500}
+.btn.ok{border-color:var(--ok);color:var(--ok)}.btn.bad{border-color:var(--bad);color:var(--bad)}
+.btn:disabled{opacity:.45;cursor:default}
+.nav{display:flex;align-items:center;gap:10px;max-width:760px;margin:16px auto 0;flex-wrap:wrap}
+.nav .sp{flex:1}
+.pos{font-family:var(--f-mono);font-size:13px;color:var(--muted)}
+.grid{max-width:760px;margin:22px auto 0;display:flex;flex-wrap:wrap;gap:5px}
+.gsec{width:100%;font-size:12px;color:var(--muted);margin-top:8px}
+.cell{width:34px;height:28px;border-radius:6px;border:1px solid var(--line);background:var(--sheet);font-family:var(--f-mono);font-size:12px;padding:0}
+.cell.r{background:var(--ok-soft);border-color:var(--ok);color:var(--ok)}
+.cell.w{background:var(--bad-soft);border-color:var(--bad);color:var(--bad)}
+.cell.cur{outline:2px solid var(--accent);outline-offset:1px}
+.empty{max-width:520px;margin:60px auto;text-align:center;color:var(--muted)}
+.empty h2{font-family:var(--f-display);color:var(--ink);font-size:22px}
+.kbd{font-family:var(--f-mono);font-size:11px;color:var(--muted);text-align:center;margin-top:18px}
+/* page viewer */
+.viewer{position:fixed;inset:0;background:color-mix(in srgb,var(--bg) 70%,transparent);backdrop-filter:blur(3px);display:flex;align-items:center;justify-content:center;padding:16px;z-index:20}
+.vbox{background:var(--sheet);border:1px solid var(--line);border-radius:12px;width:min(820px,100%);max-height:100%;display:flex;flex-direction:column;min-height:0}
+.vbar{display:flex;gap:8px;align-items:center;padding:10px 14px;border-bottom:1px solid var(--line);flex-wrap:wrap}
+.vbar .sp{flex:1}
+.vbox.two{width:min(1500px,100%)}
+.vgrid{flex:1 1 auto;min-height:0;overflow:auto;padding:12px;display:flex;flex-wrap:wrap;gap:12px;align-items:flex-start;align-content:flex-start}
+.vpane{flex:1 1 420px;background:var(--sheet);display:flex;flex-direction:column;min-width:0;border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.vhead{display:flex;gap:6px;align-items:center;padding:8px 10px;border-bottom:1px solid var(--line);flex-wrap:wrap}
+.vhead .sp{flex:1}
+.vhead .tag.ans{background:var(--ok-soft);color:var(--ok)}
+.chip:disabled{opacity:.4;cursor:default}
+.vt{font-family:var(--f-display);font-weight:600}
+.vimg{padding:8px;text-align:center}
+.vimg img{width:100%;max-width:760px;background:#fff;border-radius:4px}
+.sync{font-size:11px;color:var(--muted);padding:8px 18px 14px;border-top:1px solid var(--line)}
+@media (max-width:820px){
+  .app{grid-template-columns:minmax(0,1fr)}
+  .rail{position:fixed;inset:0 auto 0 0;width:min(320px,86vw);z-index:15;transform:translateX(-105%);transition:transform .2s;padding-top:env(safe-area-inset-top,0px)}
+  .rail.open{transform:none;box-shadow:0 0 30px rgba(0,0,0,.25)}
+  .menu{display:inline-block}
+  .sheet{padding:20px 16px 18px}
+  .stem{font-size:17px}
+  .stage{padding:16px 16px 28px}
+  .top{padding:10px 16px}
+}
+@media (prefers-reduced-motion:reduce){.rail{transition:none}}
+</style>
+
+<div class="app">
+  <aside class="rail" id="rail">
+    <div class="brand"><h1>解剖学刷题本</h1><span>人体解剖学应试指南</span></div>
+    <div class="modes" id="modes"></div>
+    <nav class="chlist" id="chlist" aria-label="章节"></nav>
+    <div class="sync" id="sync">进度只保存在本机浏览器 · <button class="linkbtn" id="bBackup">备份</button> · <button class="linkbtn" id="bRestore">恢复</button><input type="file" id="restoreFile" accept=".json,application/json" hidden><div id="syncMsg"></div></div>
+  </aside>
+  <main class="main">
+    <div class="top">
+      <button class="menu" id="menu" aria-label="打开章节列表">章节</button>
+      <div class="crumb" id="crumb">载入题库…</div>
+      <div class="types" id="types"></div>
+    </div>
+    <div class="stage" id="stage"><div class="empty"><h2>正在载入题库</h2></div></div>
+  </main>
+</div>
+<div class="viewer" id="viewer" hidden>
+  <div class="vbox" role="dialog" aria-label="原书页面">
+    <div class="vbar" id="vbar"></div>
+    <div class="vgrid" id="vgrid"></div>
+  </div>
+</div>
+
+<div class="viewer exp" id="exp" hidden>
+  <div class="vbox" role="dialog" aria-label="导出标记的题目">
+    <div class="vbar"><span class="vt" id="expTitle">导出「视频没讲」的题</span><span class="msg" id="expMsg"></span><span class="sp"></span>
+      <button class="btn primary" id="expCopy">复制全部</button><button class="btn" id="expSave" hidden>存为 .txt</button><button class="btn" id="expClose">关闭</button></div>
+    <textarea id="expText" readonly></textarea>
+  </div>
+</div>
+<script src="data.js"></script>
+<script>
+const CHOICE={A1:1,A2:1,A3:1,A4:1,B:1,X:1};
+const TYPE_LABEL={A1:'A1型 单选',A2:'A2型 病例单选',A3:'A3型',A4:'A4型',B:'B型 配伍',X:'X型 多选','填空题':'填空','名词解释':'名词解释','问答题':'问答','病例分析':'病例分析'};
+const FILTERS=[['all','全部',()=>true],['choice','选择',i=>CHOICE[i.t]],['fill','填空',i=>i.t==='填空题'],['term','名词解释',i=>i.t==='名词解释'],['essay','问答/病例',i=>i.t==='问答题'||i.t==='病例分析']];
+const L='ABCDE';
+let D=null, ALL=[], figMap={};
+let S={d:{},w:{},s:{},m:{},n:{},ts:0};           // d: qid->1/0 last result, w: qid->wrong count, s: starred
+let V={view:'ch',ch:0,filter:'all',idx:0,order:'seq'};
+let list=[], pick=new Set(), revealed=false, judged=null, editingNote=false, expKind='mark';
+
+const $=id=>document.getElementById(id);
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+function lsGet(k){try{return JSON.parse(localStorage.getItem(k)||'null')}catch(e){return null}}
+function lsSet(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}
+
+/* ---------- persistence: this browser only (localStorage) ---------- */
+function save(){S.ts=Date.now();lsSet('anat-progress',S)}
+
+/* ---------- data ---------- */
+async function load(){
+  if(window.QUIZ_DATA){D=window.QUIZ_DATA}else{const r=await fetch('data.json');D=await r.json()}
+  D.figs.forEach(f=>figMap[f.id]=f);
+  D.chapters.forEach((c,ci)=>c.items.forEach(it=>{it.ci=ci;it.id=ci+'|'+it.t+'|'+it.n;ALL.push(it)}));
+  const saved=lsGet('anat-progress'); if(saved&&saved.d)S=saved; S.m=S.m||{}; S.n=S.n||{};
+  const v=lsGet('anat-view'); if(v&&v.view)V={...V,...v};
+  if(V.ch>=D.chapters.length)V.ch=0;
+  buildList(true); renderAll();
+}
+
+function buildList(keepIdx){
+  const f=FILTERS.find(x=>x[0]===V.filter)[2];
+  let src;
+  if(V.view==='wrong') src=ALL.filter(i=>S.w[i.id]&&S.d[i.id]!==1);
+  else if(V.view==='star') src=ALL.filter(i=>S.s[i.id]);
+  else if(V.view==='mark') src=ALL.filter(i=>S.m[i.id]);
+  else if(V.view==='note') src=ALL.filter(i=>S.n[i.id]);
+  else src=D.chapters[V.ch].items;
+  list=src.filter(f);
+  if(V.order==='rand'){list=list.slice();for(let i=list.length-1;i>0;i--){const j=Math.random()*(i+1)|0;[list[i],list[j]]=[list[j],list[i]]}}
+  if(!keepIdx)V.idx=0;
+  if(V.idx>=list.length)V.idx=Math.max(0,list.length-1);
+  resetQ();
+}
+function resetQ(){pick=new Set();revealed=false;judged=null;editingNote=false}
+
+/* ---------- rail ---------- */
+function stats(items){let r=0,w=0;items.forEach(i=>{if(S.d[i.id]===1)r++;else if(S.d[i.id]===0)w++});return{r,w,n:items.length}}
+function renderRail(){
+  const wrongN=ALL.filter(i=>S.w[i.id]&&S.d[i.id]!==1).length, starN=ALL.filter(i=>S.s[i.id]).length, markN=ALL.filter(i=>S.m[i.id]).length, noteN=ALL.filter(i=>S.n[i.id]).length;
+  $('modes').innerHTML=`<button class="chip" data-v="ch" aria-pressed="${V.view==='ch'}">按章节</button>
+   <button class="chip" data-v="wrong" aria-pressed="${V.view==='wrong'}">错题本<span class="c">${wrongN}</span></button>
+   <button class="chip" data-v="star" aria-pressed="${V.view==='star'}">收藏<span class="c">${starN}</span></button>
+   <button class="chip" data-v="mark" aria-pressed="${V.view==='mark'}">视频没讲<span class="c">${markN}</span></button>
+   <button class="chip" data-v="note" aria-pressed="${V.view==='note'}">注释<span class="c">${noteN}</span></button>
+   <button class="chip" data-o="1" aria-pressed="${V.order==='rand'}">乱序</button>`;
+  let h='',lastPart=null;
+  D.chapters.forEach((c,ci)=>{
+    if(c.part!==lastPart){lastPart=c.part; if(c.part)h+=`<div class="part">${esc(c.part)}</div>`}
+    const s=stats(c.items);
+    h+=`<button class="ch" data-ch="${ci}" aria-current="${V.view==='ch'&&V.ch===ci}"><b>${esc(c.name)}</b><small>${s.r+s.w}/${s.n}</small>
+      <span class="bar"><i class="r" style="width:${s.r/s.n*100}%"></i><i class="w" style="width:${s.w/s.n*100}%"></i></span></button>`;
+  });
+  $('chlist').innerHTML=h;
+}
+/* ---------- top ---------- */
+function renderTop(){
+  let title,sub;
+  if(V.view==='ch'){const c=D.chapters[V.ch];title=c.name;const s=stats(c.items);sub=`${c.part?c.part+' · ':''}共 ${s.n} 题 · 对 ${s.r} · 错 ${s.w}`}
+  else if(V.view==='wrong'){title='错题本';sub='做错的题会出现在这里，做对一次后移出'}
+  else if(V.view==='mark'){title='视频没讲';sub='标记为视频没讲到的题，点「导出」复制后发给 Claude'}
+  else if(V.view==='note'){title='注释';sub='写过注释的题都在这里，可以一起导出'}
+  else {title='收藏';sub='点题目右上角的 ☆ 收藏'}
+  $('crumb').innerHTML=`${esc(title)}<small>${esc(sub)}</small>`;
+  const base=V.view==='ch'?D.chapters[V.ch].items:(V.view==='wrong'?ALL.filter(i=>S.w[i.id]&&S.d[i.id]!==1):V.view==='mark'?ALL.filter(i=>S.m[i.id]):V.view==='note'?ALL.filter(i=>S.n[i.id]):ALL.filter(i=>S.s[i.id]));
+  $('types').innerHTML=FILTERS.map(([k,lab,f])=>{const n=base.filter(f).length;return n||k==='all'?`<button class="chip" data-f="${k}" aria-pressed="${V.filter===k}">${lab}<span class="c">${n}</span></button>`:''}).join('')
+    +((V.view==='mark'||V.view==='note')&&base.length?`<button class="btn primary" id="bExport">导出 ${base.length} 题</button>`:'');
+}
+/* ---------- question ---------- */
+function ansLetters(it){return (it.a||'').replace(/[^A-E]/g,'')}
+function renderStage(){
+  const st=$('stage');
+  if(!list.length){st.innerHTML=`<div class="empty"><h2>${V.view==='wrong'?'错题本是空的':V.view==='star'?'还没有收藏':V.view==='mark'?'还没有标记':V.view==='note'?'还没有注释':'这一类没有题'}</h2><p>${V.view==='wrong'?'做错的选择题会自动收进来；填空和简答题点“没答对”也会收进来。':V.view==='star'?'做题时点右上角的 ☆ 收藏。':V.view==='mark'?'做题时遇到视频里没讲的知识点，点题目右上角的「视频没讲」。':V.view==='note'?'做题时点题目右上角的「✎ 注释」写下自己的笔记。':'换一个题型看看。'}</p></div>`;return}
+  const it=list[V.idx], ch=D.chapters[it.ci];
+  let h=`<article class="sheet"><div class="qhead"><span class="tag">${TYPE_LABEL[it.t]||it.t}</span><span class="qno">${V.view!=='ch'?esc(ch.name)+' · ':''}第 ${it.n} 题</span><span class="sp"></span>
+    <button class="icon mark" id="bMark" aria-pressed="${!!S.m[it.id]}">${S.m[it.id]?'● 视频没讲':'○ 视频没讲'}</button>
+    <button class="icon note" id="bNote" aria-pressed="${!!S.n[it.id]}">${S.n[it.id]?'✎ 有注释':'✎ 注释'}</button>
+    <button class="icon" id="bStar" aria-pressed="${!!S.s[it.id]}">${S.s[it.id]?'★ 已收藏':'☆ 收藏'}</button>
+    <button class="icon" id="bPage">看原页 p.${it.p}${it.ap&&it.ap!==it.p?' / 答案 p.'+it.ap:''}</button></div>`;
+  if(it.t==='填空题'){
+    const parts=(it.a||'').trim().split(/\s+/); let k=0;
+    const blanks=(it.s.match(/___/g)||[]).length, fit=parts.length===blanks;
+    h+=`<p class="stem">${esc(it.s).replace(/___/g,()=>{const t=revealed&&fit?esc(parts[k]):'';k++;return `<span class="blank ${revealed&&fit?'on':''}">${t||'&nbsp;'}</span>`})}</p>`;
+    if(revealed&&!fit)h+=`<div class="answer"><h4>参考答案</h4>${esc(it.a||'（缺答案）')}</div>`;
+    h+=selfAssess(it);
+  } else if(CHOICE[it.t]){
+    if(it.c)h+=`<div class="case">${esc(it.c)}</div>`;
+    h+=`<p class="stem">${esc(it.s)}</p>`;
+    if(it.f&&figMap[it.f])h+=`<figure class="fig"><img src="figs/${it.f}.webp" alt="${esc(figMap[it.f].cap)}"><figcaption>${esc(figMap[it.f].cap)}</figcaption></figure>`;
+    const multi=it.t==='X', ans=ansLetters(it);
+    h+=`<div class="opts">`+it.o.map((o,i)=>{const l=L[i];let cls='',mk='';
+      if(judged!==null){if(ans.includes(l)){cls='right';mk=pick.has(l)?'✓':'正确答案'}else if(pick.has(l)){cls='wrong';mk='✗'}}
+      else if(pick.has(l))cls='sel';
+      const txt=it.f&&o===l?'图中 '+l:o;
+      return `<button class="opt ${cls}" data-o="${l}" ${judged!==null?'disabled':''}><span class="k">${l}</span><span>${esc(txt)}</span><span class="mk">${mk}</span></button>`}).join('')+`</div>`;
+    if(judged!==null)h+=`<div class="verdict ${judged?'ok':'bad'}">${judged?'答对了':'答错了'}<span class="ans">答案 ${esc(ans||'?')}</span></div>`;
+    else if(multi)h+=`<div class="actions"><button class="btn primary" id="bSubmit" ${pick.size?'':'disabled'}>提交</button><span class="pos">多选题，选好后提交</span></div>`;
+  } else {
+    h+=`<p class="stem">${esc(it.s)}</p>`;
+    if(revealed)h+=`<div class="answer"><h4>参考答案</h4>${esc(it.a||'（本题书中无答案）')}</div>`;
+    h+=selfAssess(it);
+  }
+  h+=noteBlock(it);
+  h+=`</article>`;
+  h+=`<div class="nav"><button class="btn" id="bPrev" ${V.idx?'':'disabled'}>上一题</button><span class="pos">${V.idx+1} / ${list.length}</span><span class="sp"></span><button class="btn primary" id="bNext" ${V.idx<list.length-1?'':'disabled'}>下一题</button></div>`;
+  h+=`<div class="grid" id="grid">`+gridCells()+`</div>`;
+  h+=`<div class="kbd">键盘：A–E 或 1–5 选择 · Enter 提交/下一题 · ← → 翻题 · 空格 显示答案</div>`;
+  st.innerHTML=h;
+}
+function noteBlock(it){
+  const t=S.n[it.id]||'';
+  if(editingNote)return `<div class="notebox"><h4>我的注释<span class="sp"></span><button class="linkbtn" id="bNoteDone">完成</button></h4><textarea id="noteTa" placeholder="写下自己的理解、记忆口诀、易错点……">${esc(t)}</textarea><div class="hint">边写边自动保存。清空内容就是删除注释。</div></div>`;
+  if(!t)return '';
+  return `<div class="notebox"><h4>我的注释<span class="sp"></span><button class="linkbtn" id="bNoteEdit">编辑</button></h4><div class="txt">${esc(t)}</div></div>`;
+}
+function setNote(it,v){const t=v.replace(/\s+$/,'');if(t)S.n[it.id]=t;else delete S.n[it.id];save()}
+function openNoteEditor(){editingNote=true;renderStage();const ta=$('noteTa');if(ta){ta.focus();ta.setSelectionRange(ta.value.length,ta.value.length);ta.scrollIntoView({block:'nearest'})}}
+function closeNoteEditor(){editingNote=false;renderRail();renderTop();if(V.view==='note'){const id=list[V.idx]&&list[V.idx].id;buildList(true);const k=list.findIndex(i=>i.id===id);if(k>=0)V.idx=k}renderStage()}
+function selfAssess(it){
+  if(!revealed)return `<div class="actions"><button class="btn primary" id="bReveal">显示答案</button><span class="pos">先在心里或纸上作答</span></div>`;
+  const last=S.d[it.id];
+  return `<div class="actions"><button class="btn ok" id="bGot">我答对了</button><button class="btn bad" id="bMiss">没答对，加入错题本</button>${last===1?'<span class="pos">已标记：会</span>':last===0?'<span class="pos">已标记：不会</span>':''}</div>`;
+}
+function gridCells(){
+  if(list.length>400)return '';
+  let h='',lastT=null;
+  list.forEach((it,i)=>{if(V.order!=='rand'&&it.t!==lastT&&V.view==='ch'){lastT=it.t;h+=`<div class="gsec">${TYPE_LABEL[it.t]||it.t}</div>`}
+    const d=S.d[it.id];h+=`<button class="cell ${d===1?'r':d===0?'w':''} ${i===V.idx?'cur':''}" data-i="${i}" aria-label="第${i+1}题">${V.view==='ch'?it.n:i+1}</button>`});
+  return h;
+}
+function record(it,ok){S.d[it.id]=ok?1:0;if(!ok)S.w[it.id]=(S.w[it.id]||0)+1;save();renderRail();renderTop()}
+function judge(){const it=list[V.idx];const ans=ansLetters(it);const got=[...pick].sort().join('');judged=got===ans;record(it,judged);renderStage()}
+function go(d){const n=V.idx+d;if(n<0||n>=list.length)return;if(editingNote){renderRail();renderTop()}V.idx=n;resetQ();persistView();renderStage();$('stage').scrollTop=0}
+function persistView(){lsSet('anat-view',{view:V.view,ch:V.ch,filter:V.filter,idx:V.idx,order:V.order})}
+function renderAll(){renderRail();renderTop();renderStage()}
+
+/* ---------- export marked questions ---------- */
+function exportText(kind){
+  const items=kind==='note'?ALL.filter(i=>S.n[i.id]):ALL.filter(i=>S.m[i.id]);
+  const L5='ABCDE';
+  let out=kind==='note'?`以下是我在《人体解剖学应试指南》里写过注释的题目，共 ${items.length} 题：\n`:`以下是我在《人体解剖学应试指南》里标记为「视频没讲」的题目，共 ${items.length} 题。请帮我讲解每题涉及的知识点：\n`;
+  items.forEach((it,k)=>{
+    const ch=D.chapters[it.ci];
+    out+=`\n【${k+1}】${ch.name} · ${TYPE_LABEL[it.t]||it.t} 第 ${it.n} 题（原书 p.${it.p}${it.ap&&it.ap!==it.p?'，答案 p.'+it.ap:''}）\n`;
+    if(it.c)out+=`共用题干：${it.c}\n`;
+    out+=`${it.s}\n`;
+    if(it.f&&figMap[it.f])out+=`（本题有配图：${figMap[it.f].cap}）\n`;
+    if(it.o&&it.o.length&&!(it.f&&it.o.every((o,i)=>o===L5[i])))it.o.forEach((o,i)=>out+=`${L5[i]}. ${o}\n`);
+    out+=`答案：${it.a||'（书中无答案）'}\n`;
+    if(S.n[it.id])out+=`我的注释：${S.n[it.id]}\n`;
+  });
+  return out;
+}
+function openExport(){
+  expKind=V.view==='note'?'note':'mark';
+  $('expTitle').textContent=expKind==='note'?'导出写过注释的题':'导出「视频没讲」的题';
+  $('expText').value=exportText(expKind); $('expMsg').textContent='';
+  $('exp').hidden=false;
+}
+$('expClose').onclick=()=>{$('exp').hidden=true};
+$('exp').addEventListener('click',e=>{if(e.target.id==='exp')$('exp').hidden=true});
+$('expCopy').onclick=()=>{
+  const ta=$('expText'), done=()=>{$('expMsg').textContent='已复制'};
+  const fallback=()=>{ta.focus();ta.select();try{document.execCommand('copy')?done():$('expMsg').textContent='已全选，按 Ctrl+C 复制'}catch(e){$('expMsg').textContent='已全选，按 Ctrl+C 复制'}};
+  try{navigator.clipboard.writeText(ta.value).then(done,fallback)}catch(e){fallback()}
+};
+$('expSave').onclick=()=>{
+  const d=new Date(), name=`${expKind==='note'?'注释':'视频没讲'}_${d.getMonth()+1}月${d.getDate()}日.txt`;
+  const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([$('expText').value],{type:'text/plain;charset=utf-8'}));a.download=name;document.body.appendChild(a);a.click();a.remove();
+};
+
+/* ---------- backup / restore (a JSON file the user keeps) ---------- */
+function syncMsg(t){$('syncMsg').textContent=t}
+$('bBackup').onclick=()=>{
+  const d=new Date(), pad=n=>String(n).padStart(2,'0');
+  const name=`anatomy-backup-${d.getFullYear()}${pad(d.getMonth()+1)}${pad(d.getDate())}.json`;
+  const blob=new Blob([JSON.stringify({app:'anat-quiz',v:1,saved:d.toISOString(),progress:S},null,1)],{type:'application/json'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;document.body.appendChild(a);a.click();a.remove();
+  syncMsg('已下载备份文件：'+name);
+};
+$('bRestore').onclick=()=>$('restoreFile').click();
+$('restoreFile').onchange=e=>{
+  const f=e.target.files[0];if(!f)return;
+  const r=new FileReader();
+  r.onload=()=>{try{
+      const j=JSON.parse(r.result), p=j.progress||j;
+      if(!p||typeof p.d!=='object')throw 0;
+      for(const k of ['d','w','s','m','n'])S[k]={...(S[k]||{}),...(p[k]||{})};
+      save();buildList(true);renderAll();
+      syncMsg(`已恢复：做题记录 ${Object.keys(p.d||{}).length} 条，注释 ${Object.keys(p.n||{}).length} 条（与本机记录合并）`);
+    }catch(err){syncMsg('这个文件不是刷题本的备份')}
+    e.target.value='';};
+  r.readAsText(f,'utf-8');
+};
+
+/* ---------- page viewer ---------- */
+const MAXP=380;
+function openPage(p,ap){
+  const panes=[{l:'题目原页',pg:p}];
+  if(ap&&ap!==p)panes.push({l:'答案原页',pg:ap,ans:1}); else if(ap===p)panes[0].l='题目和答案原页';
+  const two=panes.length>1;
+  document.querySelector('.vbox').classList.toggle('two',two);
+  $('vbar').innerHTML=`<span class="vt">${two?'题目页 · 答案页':'原书页面'}</span><span class="sp"></span><button class="btn" id="vclose">关闭</button>`;
+  const draw=()=>{$('vgrid').innerHTML=panes.map((x,i)=>`<section class="vpane"><div class="vhead"><span class="tag ${x.ans?'ans':''}">${x.l}</span><span class="qno">p.${x.pg}</span><span class="sp"></span>
+    <button class="chip" data-i="${i}" data-d="-1" ${x.pg<=1?'disabled':''}>← 前一页</button><button class="chip" data-i="${i}" data-d="1" ${x.pg>=MAXP?'disabled':''}>后一页 →</button></div>
+    <div class="vimg"><img src="pages/${x.pg}.webp" alt="原书第${x.pg}页"></div></section>`).join('')};
+  draw(); $('viewer').hidden=false; $('vgrid').scrollTop=0;
+  $('vgrid').onclick=e=>{const b=e.target.closest('[data-d]');if(!b||b.disabled)return;const x=panes[+b.dataset.i];x.pg=Math.min(MAXP,Math.max(1,x.pg+(+b.dataset.d)));draw()};
+  $('vbar').onclick=e=>{if(e.target.id==='vclose')$('viewer').hidden=true};
+}
+$('viewer').addEventListener('click',e=>{if(e.target.id==='viewer')$('viewer').hidden=true});
+
+/* ---------- events ---------- */
+$('menu').onclick=()=>$('rail').classList.toggle('open');
+$('modes').onclick=e=>{const b=e.target.closest('button');if(!b)return;
+  if(b.dataset.o){V.order=V.order==='rand'?'seq':'rand'}else{V.view=b.dataset.v;V.filter='all'}
+  buildList(false);persistView();renderAll()};
+$('chlist').onclick=e=>{const b=e.target.closest('[data-ch]');if(!b)return;V.view='ch';V.ch=+b.dataset.ch;V.filter='all';buildList(false);persistView();renderAll();$('rail').classList.remove('open');$('stage').scrollTop=0};
+$('types').onclick=e=>{if(e.target.closest('#bExport')){openExport();return}const b=e.target.closest('[data-f]');if(!b)return;V.filter=b.dataset.f;buildList(false);persistView();renderTop();renderStage()};
+$('stage').addEventListener('input',e=>{if(e.target.id==='noteTa'){const it=list[V.idx];if(it)setNote(it,e.target.value)}});
+$('stage').onclick=e=>{
+  const it=list[V.idx];if(!it)return;
+  const o=e.target.closest('.opt');
+  if(o&&judged===null){const l=o.dataset.o;
+    if(it.t==='X'){pick.has(l)?pick.delete(l):pick.add(l);renderStage()}else{pick=new Set([l]);judge()}return}
+  const c=e.target.closest('.cell');if(c){V.idx=+c.dataset.i;resetQ();persistView();renderStage();return}
+  const id=e.target.id;
+  if(id==='bSubmit')judge();
+  else if(id==='bNext')go(1);else if(id==='bPrev')go(-1);
+  else if(id==='bReveal'){revealed=true;renderStage()}
+  else if(id==='bGot'){record(it,true);go(1)||renderStage()}
+  else if(id==='bMiss'){record(it,false);renderStage()}
+  else if(id==='bStar'){S.s[it.id]?delete S.s[it.id]:S.s[it.id]=1;save();renderRail();renderStage()}
+  else if(id==='bMark'){S.m[it.id]?delete S.m[it.id]:S.m[it.id]=1;save();renderRail();if(V.view==='mark')renderTop();renderStage()}
+  else if(id==='bPage')openPage(it.p,it.ap);
+  else if(id==='bNote'||id==='bNoteEdit'){if(editingNote)closeNoteEditor();else openNoteEditor()}
+  else if(id==='bNoteDone')closeNoteEditor();
+};
+document.addEventListener('keydown',e=>{
+  if(!$('viewer').hidden){if(e.key==='Escape')$('viewer').hidden=true;return}
+  if(!$('exp').hidden){if(e.key==='Escape')$('exp').hidden=true;return}
+  if(e.target.id==='noteTa'&&e.key==='Escape'){closeNoteEditor();return}
+  if(e.target.closest('input,textarea'))return;
+  const it=list[V.idx];if(!it)return;
+  const k=e.key.toUpperCase();
+  let l=null;if('ABCDE'.includes(k)&&k.length===1)l=k;else if('12345'.includes(k)&&k.length===1)l=L[+k-1];
+  if(l&&CHOICE[it.t]&&judged===null&&l.charCodeAt(0)-65<it.o.length){e.preventDefault();if(it.t==='X'){pick.has(l)?pick.delete(l):pick.add(l);renderStage()}else{pick=new Set([l]);judge()}return}
+  if(e.key==='ArrowRight')go(1);else if(e.key==='ArrowLeft')go(-1);
+  else if(e.key==='Enter'){e.preventDefault();if(CHOICE[it.t]&&judged===null&&pick.size)judge();else go(1)}
+  else if(e.key===' '&&!CHOICE[it.t]&&!revealed){e.preventDefault();revealed=true;renderStage()}
+});
+load().catch(()=>{$('stage').innerHTML='<div class="empty"><h2>题库没有载入</h2><p>刷新页面再试一次。</p></div>'});
+</script>
+

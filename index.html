@@ -33,6 +33,13 @@ button:focus-visible,a:focus-visible{outline:2px solid var(--accent);outline-off
 .brand{padding:18px 18px 10px;display:flex;align-items:baseline;gap:8px}
 .brand h1{font-family:var(--f-display);font-weight:900;font-size:20px;margin:0;letter-spacing:.02em}
 .brand span{color:var(--muted);font-size:12px}
+.banks{display:flex;gap:0;margin:0 18px 12px;border:1px solid var(--line);border-radius:9px;overflow:hidden}
+.banks button{flex:1;border:0;background:transparent;padding:6px 8px;font-size:13px;color:var(--muted)}
+.banks button[aria-pressed="true"]{background:var(--accent);color:var(--sheet);font-weight:500}
+.judge{display:flex;gap:10px}
+.judge .opt{flex:1;grid-template-columns:30px minmax(0,1fr) auto}
+.expl{margin-top:12px;padding:10px 12px;border-radius:8px;background:var(--accent-soft);font-size:14px;line-height:1.8;white-space:pre-wrap}
+.expl b{color:var(--accent);font-weight:500}
 .modes{display:flex;gap:6px;padding:0 18px 12px;flex-wrap:wrap}
 .chip{border:1px solid var(--line);background:transparent;border-radius:999px;padding:3px 11px;font-size:13px;color:var(--muted)}
 .chip[aria-pressed="true"]{background:var(--ink);color:var(--sheet);border-color:var(--ink)}
@@ -149,7 +156,8 @@ button:focus-visible,a:focus-visible{outline:2px solid var(--accent);outline-off
 
 <div class="app">
   <aside class="rail" id="rail">
-    <div class="brand"><h1>解剖学刷题本</h1><span>人体解剖学应试指南</span></div>
+    <div class="brand"><h1>解剖学刷题本</h1><span id="bankSub">人体解剖学应试指南</span></div>
+    <div class="banks" id="banks"></div>
     <div class="modes" id="modes"></div>
     <nav class="chlist" id="chlist" aria-label="章节"></nav>
     <div class="sync" id="sync">进度只保存在本机浏览器 · <button class="linkbtn" id="bBackup">备份</button> · <button class="linkbtn" id="bRestore">恢复</button><input type="file" id="restoreFile" accept=".json,application/json" hidden><div id="syncMsg"></div></div>
@@ -178,11 +186,16 @@ button:focus-visible,a:focus-visible{outline:2px solid var(--accent);outline-off
   </div>
 </div>
 <script src="data.js"></script>
+<script src="data3k.js"></script>
 <script>
 const CHOICE={A1:1,A2:1,A3:1,A4:1,B:1,X:1};
-const TYPE_LABEL={A1:'A1型 单选',A2:'A2型 病例单选',A3:'A3型',A4:'A4型',B:'B型 配伍',X:'X型 多选','填空题':'填空','名词解释':'名词解释','问答题':'问答','病例分析':'病例分析'};
-const FILTERS=[['all','全部',()=>true],['choice','选择',i=>CHOICE[i.t]],['fill','填空',i=>i.t==='填空题'],['term','名词解释',i=>i.t==='名词解释'],['essay','问答/病例',i=>i.t==='问答题'||i.t==='病例分析']];
+const TYPE_LABEL={A1:'A1型 单选',A2:'A2型 病例单选',A3:'A3型',A4:'A4型',B:'B型 配伍',X:'X型 多选','填空题':'填空','判断题':'判断','名词解释':'名词解释','问答题':'问答','病例分析':'病例分析'};
+const FILTERS=[['all','全部',()=>true],['choice','选择',i=>CHOICE[i.t]],['fill','填空',i=>i.t==='填空题'],['judge','判断',i=>i.t==='判断题'],['term','名词解释',i=>i.t==='名词解释'],['essay','问答/病例',i=>i.t==='问答题'||i.t==='病例分析']];
 const L='ABCDE';
+const BANKS=[
+  {id:'zn',name:'应试指南',sub:'人体解剖学应试指南',src:()=>window.QUIZ_DATA,key:'anat-progress',vkey:'anat-view',pages:'pages',maxp:380,pageLabel:'原书'},
+  {id:'3k',name:'三千题',sub:'系统解剖学题库（一）',src:()=>window.QUIZ_DATA_3K,key:'anat3k-progress',vkey:'anat3k-view',pages:'pages3k',maxp:250,pageLabel:'题库'}];
+let BANK=BANKS[0];
 let D=null, ALL=[], figMap={};
 let S={d:{},w:{},s:{},m:{},n:{},ts:0};           // d: qid->1/0 last result, w: qid->wrong count, s: starred
 let V={view:'ch',ch:0,filter:'all',idx:0,order:'seq'};
@@ -194,16 +207,26 @@ function lsGet(k){try{return JSON.parse(localStorage.getItem(k)||'null')}catch(e
 function lsSet(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}
 
 /* ---------- persistence: this browser only (localStorage) ---------- */
-function save(){S.ts=Date.now();lsSet('anat-progress',S)}
+function save(){S.ts=Date.now();lsSet(BANK.key,S)}
 
 /* ---------- data ---------- */
 async function load(){
-  if(window.QUIZ_DATA){D=window.QUIZ_DATA}else{const r=await fetch('data.json');D=await r.json()}
-  D.figs.forEach(f=>figMap[f.id]=f);
+  if(!window.QUIZ_DATA){try{const r=await fetch('data.json');window.QUIZ_DATA=await r.json()}catch(e){}}
+  const want=lsGet('anat-bank');
+  useBank(BANKS.find(b=>b.id===want&&b.src())||BANKS.find(b=>b.src()));
+}
+function useBank(b){
+  BANK=b; lsSet('anat-bank',b.id);
+  D=b.src(); ALL=[]; figMap={};
+  (D.figs||[]).forEach(f=>figMap[f.id]=f);
   D.chapters.forEach((c,ci)=>c.items.forEach(it=>{it.ci=ci;it.id=ci+'|'+it.t+'|'+it.n;ALL.push(it)}));
-  const saved=lsGet('anat-progress'); if(saved&&saved.d)S=saved; S.m=S.m||{}; S.n=S.n||{};
-  const v=lsGet('anat-view'); if(v&&v.view)V={...V,...v};
+  S={d:{},w:{},s:{},m:{},n:{},ts:0};
+  const saved=lsGet(b.key); if(saved&&saved.d)S=saved; S.m=S.m||{}; S.n=S.n||{};
+  V={view:'ch',ch:0,filter:'all',idx:0,order:'seq'};
+  const v=lsGet(b.vkey); if(v&&v.view)V={...V,...v};
   if(V.ch>=D.chapters.length)V.ch=0;
+  $('bankSub').textContent=b.sub;
+  $('banks').innerHTML=BANKS.filter(x=>x.src()).map(x=>`<button data-bank="${x.id}" aria-pressed="${x.id===b.id}">${x.name}</button>`).join('');
   buildList(true); renderAll();
 }
 
@@ -271,7 +294,15 @@ function renderStage(){
     const blanks=(it.s.match(/___/g)||[]).length, fit=parts.length===blanks;
     h+=`<p class="stem">${esc(it.s).replace(/___/g,()=>{const t=revealed&&fit?esc(parts[k]):'';k++;return `<span class="blank ${revealed&&fit?'on':''}">${t||'&nbsp;'}</span>`})}</p>`;
     if(revealed&&!fit)h+=`<div class="answer"><h4>参考答案</h4>${esc(it.a||'（缺答案）')}</div>`;
+    if(revealed&&it.e)h+=`<div class="expl"><b>解析</b>　${esc(it.e)}</div>`;
     h+=selfAssess(it);
+  } else if(it.t==='判断题'){
+    h+=`<p class="stem">${esc(it.s)}</p>`;
+    h+=`<div class="opts judge">`+[['√','对'],['×','错']].map(([k,lab])=>{let cls='',mk='';
+      if(judged!==null){if(it.a===k){cls='right';mk=pick.has(k)?'✓':'正确答案'}else if(pick.has(k)){cls='wrong';mk='✗'}}
+      return `<button class="opt ${cls}" data-o="${k}" ${judged!==null?'disabled':''}><span class="k">${k}</span><span>${lab}</span><span class="mk">${mk}</span></button>`}).join('')+`</div>`;
+    if(judged!==null)h+=`<div class="verdict ${judged?'ok':'bad'}">${judged?'答对了':'答错了'}<span class="ans">答案 ${esc(it.a)}</span></div>`;
+    if(judged!==null&&it.e)h+=`<div class="expl"><b>解析</b>　${esc(it.e)}</div>`;
   } else if(CHOICE[it.t]){
     if(it.c)h+=`<div class="case">${esc(it.c)}</div>`;
     h+=`<p class="stem">${esc(it.s)}</p>`;
@@ -283,10 +314,11 @@ function renderStage(){
       const txt=it.f&&o===l?'图中 '+l:o;
       return `<button class="opt ${cls}" data-o="${l}" ${judged!==null?'disabled':''}><span class="k">${l}</span><span>${esc(txt)}</span><span class="mk">${mk}</span></button>`}).join('')+`</div>`;
     if(judged!==null)h+=`<div class="verdict ${judged?'ok':'bad'}">${judged?'答对了':'答错了'}<span class="ans">答案 ${esc(ans||'?')}</span></div>`;
+    if(judged!==null&&it.e)h+=`<div class="expl"><b>解析</b>　${esc(it.e)}</div>`;
     else if(multi)h+=`<div class="actions"><button class="btn primary" id="bSubmit" ${pick.size?'':'disabled'}>提交</button><span class="pos">多选题，选好后提交</span></div>`;
   } else {
     h+=`<p class="stem">${esc(it.s)}</p>`;
-    if(revealed)h+=`<div class="answer"><h4>参考答案</h4>${esc(it.a||'（本题书中无答案）')}</div>`;
+    if(revealed)h+=`<div class="answer"><h4>参考答案</h4>${esc(it.a||'（本题书中无答案）')}</div>`+(it.e?`<div class="expl"><b>解析</b>　${esc(it.e)}</div>`:'');
     h+=selfAssess(it);
   }
   h+=noteBlock(it);
@@ -318,24 +350,25 @@ function gridCells(){
   return h;
 }
 function record(it,ok){S.d[it.id]=ok?1:0;if(!ok)S.w[it.id]=(S.w[it.id]||0)+1;save();renderRail();renderTop()}
-function judge(){const it=list[V.idx];const ans=ansLetters(it);const got=[...pick].sort().join('');judged=got===ans;record(it,judged);renderStage()}
+function judge(){const it=list[V.idx];const ans=it.t==='判断题'?it.a:ansLetters(it);const got=[...pick].sort().join('');judged=got===ans;record(it,judged);renderStage()}
 function go(d){const n=V.idx+d;if(n<0||n>=list.length)return;if(editingNote){renderRail();renderTop()}V.idx=n;resetQ();persistView();renderStage();$('stage').scrollTop=0}
-function persistView(){lsSet('anat-view',{view:V.view,ch:V.ch,filter:V.filter,idx:V.idx,order:V.order})}
+function persistView(){lsSet(BANK.vkey,{view:V.view,ch:V.ch,filter:V.filter,idx:V.idx,order:V.order})}
 function renderAll(){renderRail();renderTop();renderStage()}
 
 /* ---------- export marked questions ---------- */
 function exportText(kind){
   const items=kind==='note'?ALL.filter(i=>S.n[i.id]):ALL.filter(i=>S.m[i.id]);
   const L5='ABCDE';
-  let out=kind==='note'?`以下是我在《人体解剖学应试指南》里写过注释的题目，共 ${items.length} 题：\n`:`以下是我在《人体解剖学应试指南》里标记为「视频没讲」的题目，共 ${items.length} 题。请帮我讲解每题涉及的知识点：\n`;
+  let out=kind==='note'?`以下是我在《${BANK.sub}》里写过注释的题目，共 ${items.length} 题：\n`:`以下是我在《${BANK.sub}》里标记为「视频没讲」的题目，共 ${items.length} 题。请帮我讲解每题涉及的知识点：\n`;
   items.forEach((it,k)=>{
     const ch=D.chapters[it.ci];
-    out+=`\n【${k+1}】${ch.name} · ${TYPE_LABEL[it.t]||it.t} 第 ${it.n} 题（原书 p.${it.p}${it.ap&&it.ap!==it.p?'，答案 p.'+it.ap:''}）\n`;
+    out+=`\n【${k+1}】${ch.name} · ${TYPE_LABEL[it.t]||it.t} 第 ${it.n} 题（${BANK.pageLabel} p.${it.p}${it.ap&&it.ap!==it.p?'，答案 p.'+it.ap:''}）\n`;
     if(it.c)out+=`共用题干：${it.c}\n`;
     out+=`${it.s}\n`;
     if(it.f&&figMap[it.f])out+=`（本题有配图：${figMap[it.f].cap}）\n`;
     if(it.o&&it.o.length&&!(it.f&&it.o.every((o,i)=>o===L5[i])))it.o.forEach((o,i)=>out+=`${L5[i]}. ${o}\n`);
     out+=`答案：${it.a||'（书中无答案）'}\n`;
+    if(it.e)out+=`解析：${it.e}\n`;
     if(S.n[it.id])out+=`我的注释：${S.n[it.id]}\n`;
   });
   return out;
@@ -363,7 +396,8 @@ function syncMsg(t){$('syncMsg').textContent=t}
 $('bBackup').onclick=()=>{
   const d=new Date(), pad=n=>String(n).padStart(2,'0');
   const name=`anatomy-backup-${d.getFullYear()}${pad(d.getMonth()+1)}${pad(d.getDate())}.json`;
-  const blob=new Blob([JSON.stringify({app:'anat-quiz',v:1,saved:d.toISOString(),progress:S},null,1)],{type:'application/json'});
+  save(); const banks={}; BANKS.forEach(b=>{const x=lsGet(b.key); if(x)banks[b.id]=x});
+  const blob=new Blob([JSON.stringify({app:'anat-quiz',v:2,saved:d.toISOString(),banks},null,1)],{type:'application/json'});
   const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;document.body.appendChild(a);a.click();a.remove();
   syncMsg('已下载备份文件：'+name);
 };
@@ -372,35 +406,40 @@ $('restoreFile').onchange=e=>{
   const f=e.target.files[0];if(!f)return;
   const r=new FileReader();
   r.onload=()=>{try{
-      const j=JSON.parse(r.result), p=j.progress||j;
-      if(!p||typeof p.d!=='object')throw 0;
-      for(const k of ['d','w','s','m','n'])S[k]={...(S[k]||{}),...(p[k]||{})};
-      save();buildList(true);renderAll();
-      syncMsg(`已恢复：做题记录 ${Object.keys(p.d||{}).length} 条，注释 ${Object.keys(p.n||{}).length} 条（与本机记录合并）`);
+      const j=JSON.parse(r.result);
+      const banks=j.banks||((j.progress||j).d?{zn:j.progress||j}:null);
+      if(!banks)throw 0;
+      let rec=0,notes=0;
+      for(const b of BANKS){const p=banks[b.id];if(!p)continue;
+        const cur=lsGet(b.key)||{d:{},w:{},s:{},m:{},n:{}};
+        for(const k of ['d','w','s','m','n'])cur[k]={...(cur[k]||{}),...(p[k]||{})};
+        cur.ts=Date.now(); lsSet(b.key,cur); rec+=Object.keys(p.d||{}).length; notes+=Object.keys(p.n||{}).length}
+      useBank(BANK);
+      syncMsg(`已恢复：做题记录 ${rec} 条，注释 ${notes} 条（两个题库都已合并）`);
     }catch(err){syncMsg('这个文件不是刷题本的备份')}
     e.target.value='';};
   r.readAsText(f,'utf-8');
 };
 
 /* ---------- page viewer ---------- */
-const MAXP=380;
 function openPage(p,ap){
   const panes=[{l:'题目原页',pg:p}];
   if(ap&&ap!==p)panes.push({l:'答案原页',pg:ap,ans:1}); else if(ap===p)panes[0].l='题目和答案原页';
   const two=panes.length>1;
   document.querySelector('.vbox').classList.toggle('two',two);
-  $('vbar').innerHTML=`<span class="vt">${two?'题目页 · 答案页':'原书页面'}</span><span class="sp"></span><button class="btn" id="vclose">关闭</button>`;
+  $('vbar').innerHTML=`<span class="vt">${two?'题目页 · 答案页':BANK.pageLabel+'页面'}</span><span class="sp"></span><button class="btn" id="vclose">关闭</button>`;
   const draw=()=>{$('vgrid').innerHTML=panes.map((x,i)=>`<section class="vpane"><div class="vhead"><span class="tag ${x.ans?'ans':''}">${x.l}</span><span class="qno">p.${x.pg}</span><span class="sp"></span>
-    <button class="chip" data-i="${i}" data-d="-1" ${x.pg<=1?'disabled':''}>← 前一页</button><button class="chip" data-i="${i}" data-d="1" ${x.pg>=MAXP?'disabled':''}>后一页 →</button></div>
-    <div class="vimg"><img src="pages/${x.pg}.webp" alt="原书第${x.pg}页"></div></section>`).join('')};
+    <button class="chip" data-i="${i}" data-d="-1" ${x.pg<=1?'disabled':''}>← 前一页</button><button class="chip" data-i="${i}" data-d="1" ${x.pg>=BANK.maxp?'disabled':''}>后一页 →</button></div>
+    <div class="vimg"><img src="${BANK.pages}/${x.pg}.webp" alt="${BANK.pageLabel}第${x.pg}页"></div></section>`).join('')};
   draw(); $('viewer').hidden=false; $('vgrid').scrollTop=0;
-  $('vgrid').onclick=e=>{const b=e.target.closest('[data-d]');if(!b||b.disabled)return;const x=panes[+b.dataset.i];x.pg=Math.min(MAXP,Math.max(1,x.pg+(+b.dataset.d)));draw()};
+  $('vgrid').onclick=e=>{const b=e.target.closest('[data-d]');if(!b||b.disabled)return;const x=panes[+b.dataset.i];x.pg=Math.min(BANK.maxp,Math.max(1,x.pg+(+b.dataset.d)));draw()};
   $('vbar').onclick=e=>{if(e.target.id==='vclose')$('viewer').hidden=true};
 }
 $('viewer').addEventListener('click',e=>{if(e.target.id==='viewer')$('viewer').hidden=true});
 
 /* ---------- events ---------- */
 $('menu').onclick=()=>$('rail').classList.toggle('open');
+$('banks').onclick=e=>{const b=e.target.closest('[data-bank]');if(!b||b.dataset.bank===BANK.id)return;useBank(BANKS.find(x=>x.id===b.dataset.bank));$('stage').scrollTop=0};
 $('modes').onclick=e=>{const b=e.target.closest('button');if(!b)return;
   if(b.dataset.o){V.order=V.order==='rand'?'seq':'rand'}else{V.view=b.dataset.v;V.filter='all'}
   buildList(false);persistView();renderAll()};
@@ -410,6 +449,7 @@ $('stage').addEventListener('input',e=>{if(e.target.id==='noteTa'){const it=list
 $('stage').onclick=e=>{
   const it=list[V.idx];if(!it)return;
   const o=e.target.closest('.opt');
+  if(o&&judged===null&&it.t==='判断题'){pick=new Set([o.dataset.o]);judge();return}
   if(o&&judged===null){const l=o.dataset.o;
     if(it.t==='X'){pick.has(l)?pick.delete(l):pick.add(l);renderStage()}else{pick=new Set([l]);judge()}return}
   const c=e.target.closest('.cell');if(c){V.idx=+c.dataset.i;resetQ();persistView();renderStage();return}
@@ -432,11 +472,13 @@ document.addEventListener('keydown',e=>{
   if(e.target.closest('input,textarea'))return;
   const it=list[V.idx];if(!it)return;
   const k=e.key.toUpperCase();
+  if(it.t==='判断题'&&judged===null&&['1','2','Y','N'].includes(k)){pick=new Set([k==='1'||k==='Y'?'√':'×']);judge();return}
+  if(it.t==='判断题'&&e.key==='Enter'){e.preventDefault();go(1);return}
   let l=null;if('ABCDE'.includes(k)&&k.length===1)l=k;else if('12345'.includes(k)&&k.length===1)l=L[+k-1];
   if(l&&CHOICE[it.t]&&judged===null&&l.charCodeAt(0)-65<it.o.length){e.preventDefault();if(it.t==='X'){pick.has(l)?pick.delete(l):pick.add(l);renderStage()}else{pick=new Set([l]);judge()}return}
   if(e.key==='ArrowRight')go(1);else if(e.key==='ArrowLeft')go(-1);
   else if(e.key==='Enter'){e.preventDefault();if(CHOICE[it.t]&&judged===null&&pick.size)judge();else go(1)}
-  else if(e.key===' '&&!CHOICE[it.t]&&!revealed){e.preventDefault();revealed=true;renderStage()}
+  else if(e.key===' '&&!CHOICE[it.t]&&it.t!=='判断题'&&!revealed){e.preventDefault();revealed=true;renderStage()}
 });
 load().catch(()=>{$('stage').innerHTML='<div class="empty"><h2>题库没有载入</h2><p>刷新页面再试一次。</p></div>'});
 </script>

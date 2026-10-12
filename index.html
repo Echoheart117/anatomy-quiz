@@ -80,6 +80,31 @@ button:focus-visible,a:focus-visible{outline:2px solid var(--accent);outline-off
 .notebox .txt{white-space:pre-wrap;word-break:break-word;line-height:1.8}
 .notebox textarea{width:100%;box-sizing:border-box;min-height:110px;padding:8px 10px;border:1px solid var(--line);border-radius:6px;background:var(--sheet);color:var(--ink);font:15px/1.7 var(--f-body);resize:vertical}
 .notebox .hint{font-size:12px;color:var(--muted);margin-top:4px}
+.notebox .tools{display:flex;gap:6px;align-items:center;margin-bottom:6px;flex-wrap:wrap}
+.notebox .tools .btn{padding:3px 10px;font-size:13px}
+.notebox .tools .btn[aria-pressed="true"]{background:var(--ink);color:var(--sheet);border-color:var(--ink)}
+.notebox textarea.drag{border-color:var(--accent);background:var(--accent-soft)}
+.md{line-height:1.8;word-break:break-word}
+.md>*:first-child{margin-top:0}.md>*:last-child{margin-bottom:0}
+.md p{margin:0 0 8px}
+.md h3,.md h4,.md h5{margin:10px 0 6px;font-family:var(--f-display);font-weight:600;color:var(--ink)}
+.md h3{font-size:17px}.md h4{font-size:15.5px}.md h5{font-size:14.5px}
+.md ul,.md ol{margin:0 0 8px;padding-left:1.5em}
+.md li{margin:2px 0}
+.md blockquote{margin:0 0 8px;padding:2px 0 2px 10px;border-left:3px solid var(--line);color:var(--muted)}
+.md code{font-family:var(--f-mono);font-size:.88em;background:var(--sheet);border:1px solid var(--line);border-radius:4px;padding:0 4px}
+.md pre{background:var(--sheet);border:1px solid var(--line);border-radius:6px;padding:8px 10px;overflow-x:auto;margin:0 0 8px}
+.md pre code{border:0;padding:0;background:none}
+.md hr{border:0;border-top:1px solid var(--line);margin:10px 0}
+.md a{color:var(--accent)}
+.md .tbl{overflow-x:auto;margin:0 0 8px}
+.md table{border-collapse:collapse;font-size:14px}
+.md th,.md td{border:1px solid var(--line);padding:4px 8px;text-align:left;vertical-align:top}
+.md th{background:var(--sheet);font-weight:500}
+.md img{max-width:100%;max-height:420px;border-radius:6px;border:1px solid var(--line);background:#fff;cursor:zoom-in;display:block;margin:6px 0}
+.md .imgmiss{display:inline-block;font-size:12px;color:var(--muted);border:1px dashed var(--line);border-radius:6px;padding:4px 8px;margin:4px 0}
+.lightbox{position:fixed;inset:0;background:rgba(0,0,0,.82);display:flex;align-items:center;justify-content:center;z-index:30;padding:16px;cursor:zoom-out}
+.lightbox img{max-width:100%;max-height:100%;border-radius:6px;background:#fff}
 .linkbtn{border:0;background:none;padding:0;font-size:12px;color:var(--muted);text-decoration:underline;text-underline-offset:2px}
 .linkbtn:hover{color:var(--accent)}
 .case{font-size:15px;line-height:1.75;color:var(--muted,inherit);border-left:3px solid var(--line,currentColor);padding:2px 0 2px 12px;margin:0 0 12px;white-space:pre-wrap}
@@ -160,7 +185,7 @@ button:focus-visible,a:focus-visible{outline:2px solid var(--accent);outline-off
     <div class="banks" id="banks"></div>
     <div class="modes" id="modes"></div>
     <nav class="chlist" id="chlist" aria-label="章节"></nav>
-    <div class="sync" id="sync">进度只保存在本机浏览器 · <button class="linkbtn" id="bBackup">备份</button> · <button class="linkbtn" id="bRestore">恢复</button><input type="file" id="restoreFile" accept=".json,application/json" hidden><div id="syncMsg"></div></div>
+    <div class="sync" id="sync">进度只保存在本机浏览器 · <button class="linkbtn" id="bBackup">备份</button> · <button class="linkbtn" id="bRestore">恢复</button><input type="file" id="restoreFile" accept=".json,application/json" hidden><input type="file" id="imgFile" accept="image/*" multiple hidden><div id="syncMsg"></div></div>
   </aside>
   <main class="main">
     <div class="top">
@@ -178,6 +203,7 @@ button:focus-visible,a:focus-visible{outline:2px solid var(--accent);outline-off
   </div>
 </div>
 
+<div class="lightbox" id="lightbox" hidden><img alt="注释图片"></div>
 <div class="viewer exp" id="exp" hidden>
   <div class="vbox" role="dialog" aria-label="导出标记的题目">
     <div class="vbar"><span class="vt" id="expTitle">导出「视频没讲」的题</span><span class="msg" id="expMsg"></span><span class="sp"></span>
@@ -244,7 +270,7 @@ function buildList(keepIdx){
   if(V.idx>=list.length)V.idx=Math.max(0,list.length-1);
   resetQ();
 }
-function resetQ(){pick=new Set();revealed=false;judged=null;editingNote=false}
+function resetQ(){pick=new Set();revealed=false;judged=null;editingNote=false;notePreview=false}
 
 /* ---------- rail ---------- */
 function stats(items){let r=0,w=0;items.forEach(i=>{if(S.d[i.id]===1)r++;else if(S.d[i.id]===0)w++});return{r,w,n:items.length}}
@@ -327,15 +353,101 @@ function renderStage(){
   h+=`<div class="grid" id="grid">`+gridCells()+`</div>`;
   h+=`<div class="kbd">键盘：A–E 或 1–5 选择 · Enter 提交/下一题 · ← → 翻题 · 空格 显示答案</div>`;
   st.innerHTML=h;
+  hydrateImgs(st);
 }
+let notePreview=false;
 function noteBlock(it){
   const t=S.n[it.id]||'';
-  if(editingNote)return `<div class="notebox"><h4>我的注释<span class="sp"></span><button class="linkbtn" id="bNoteDone">完成</button></h4><textarea id="noteTa" placeholder="写下自己的理解、记忆口诀、易错点……">${esc(t)}</textarea><div class="hint">边写边自动保存。清空内容就是删除注释。</div></div>`;
+  if(editingNote){
+    const body=notePreview?`<div class="md" id="notePrev">${md(t)||'<p class="hint">（还没有内容）</p>'}</div>`
+      :`<textarea id="noteTa" placeholder="写下自己的理解、记忆口诀、易错点……&#10;支持 Markdown：**加粗**、*斜体*、# 标题、- 列表、> 引用、表格&#10;截图后 Ctrl+V 可直接粘贴图片，也可以把图片拖进来">${esc(t)}</textarea>`;
+    return `<div class="notebox"><h4>我的注释<span class="sp"></span><button class="linkbtn" id="bNoteDone">完成</button></h4>
+      <div class="tools"><button class="btn" id="bNoteImg" ${notePreview?'disabled':''}>插入图片</button><button class="btn" id="bNotePrev" aria-pressed="${notePreview}">预览</button><span class="hint" id="noteMsg"></span></div>
+      ${body}<div class="hint">边写边自动保存，清空内容就是删除注释。图片存在本机浏览器里，换电脑前用左下角「备份」。</div></div>`;
+  }
   if(!t)return '';
-  return `<div class="notebox"><h4>我的注释<span class="sp"></span><button class="linkbtn" id="bNoteEdit">编辑</button></h4><div class="txt">${esc(t)}</div></div>`;
+  return `<div class="notebox"><h4>我的注释<span class="sp"></span><button class="linkbtn" id="bNoteEdit">编辑</button></h4><div class="md">${md(t)}</div></div>`;
+}
+
+/* ---------- tiny markdown renderer (no external library, works offline) ---------- */
+function mdInline(s){
+  // s is already HTML-escaped
+  const codes=[]; s=s.replace(/`([^`]+)`/g,(m,c)=>{codes.push(c);return `\u0000${codes.length-1}\u0000`});
+  s=s.replace(/!\[([^\]]*)\]\(img:([A-Za-z0-9_-]+)\)/g,(m,alt,id)=>`<img data-img="${id}" alt="${alt}">`);
+  s=s.replace(/!\[([^\]]*)\]\((https?:\/\/[^\s)]+)\)/g,(m,alt,u)=>`<img src="${u}" alt="${alt}">`);
+  s=s.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g,(m,t,u)=>`<a href="${u}" target="_blank" rel="noopener">${t}</a>`);
+  s=s.replace(/\*\*([^*]+?)\*\*/g,'<strong>$1</strong>').replace(/__([^_]+?)__/g,'<strong>$1</strong>');
+  s=s.replace(/(^|[^*])\*([^*\s][^*]*?)\*(?!\*)/g,'$1<em>$2</em>');
+  s=s.replace(/~~([^~]+?)~~/g,'<del>$1</del>');
+  s=s.replace(/==([^=]+?)==/g,'<mark>$1</mark>');
+  return s.replace(/\u0000(\d+)\u0000/g,(m,i)=>`<code>${codes[+i]}</code>`);
+}
+function md(src){
+  if(!src)return '';
+  const L=esc(src).split(/\r?\n/); let out='',i=0;
+  const isTblSep=l=>/^\s*\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)*\|?\s*$/.test(l);
+  const cells=l=>l.trim().replace(/^\|/,'').replace(/\|$/,'').split('|').map(c=>mdInline(c.trim()));
+  while(i<L.length){
+    let l=L[i];
+    if(/^\s*```/.test(l)){let b=[];i++;while(i<L.length&&!/^\s*```/.test(L[i]))b.push(L[i++]);i++;out+=`<pre><code>${b.join('\n')}</code></pre>`;continue}
+    if(!l.trim()){i++;continue}
+    let m=l.match(/^(#{1,6})\s+(.*)$/); if(m){const n=Math.min(5,m[1].length+2);out+=`<h${n}>${mdInline(m[2])}</h${n}>`;i++;continue}
+    if(/^\s*(-{3,}|\*{3,}|_{3,})\s*$/.test(l)){out+='<hr>';i++;continue}
+    if(l.includes('|')&&i+1<L.length&&isTblSep(L[i+1])){
+      const head=cells(l);i+=2;let rows=[];while(i<L.length&&L[i].includes('|')&&L[i].trim())rows.push(cells(L[i++]));
+      out+=`<div class="tbl"><table><thead><tr>${head.map(c=>`<th>${c}</th>`).join('')}</tr></thead><tbody>${rows.map(r=>`<tr>${r.map(c=>`<td>${c}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;continue}
+    if(/^\s*&gt;\s?/.test(l)){let b=[];while(i<L.length&&/^\s*&gt;\s?/.test(L[i]))b.push(L[i++].replace(/^\s*&gt;\s?/,''));out+=`<blockquote>${md(b.join('\n').replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&quot;/g,'"'))}</blockquote>`;continue}
+    if(/^\s*[-*+]\s+/.test(l)){let b=[];while(i<L.length&&/^\s*[-*+]\s+/.test(L[i]))b.push(L[i++].replace(/^\s*[-*+]\s+/,''));out+=`<ul>${b.map(x=>`<li>${mdInline(x)}</li>`).join('')}</ul>`;continue}
+    if(/^\s*\d+[.)、]\s*/.test(l)&&/^\s*\d+[.)]\s+/.test(l)){let b=[];while(i<L.length&&/^\s*\d+[.)]\s+/.test(L[i]))b.push(L[i++].replace(/^\s*\d+[.)]\s+/,''));out+=`<ol>${b.map(x=>`<li>${mdInline(x)}</li>`).join('')}</ol>`;continue}
+    let b=[];while(i<L.length&&L[i].trim()&&!/^(#{1,6})\s|^\s*```|^\s*&gt;|^\s*[-*+]\s+|^\s*\d+[.)]\s+/.test(L[i])&&!(L[i].includes('|')&&i+1<L.length&&isTblSep(L[i+1])))b.push(mdInline(L[i++]));
+    if(!b.length){b.push(mdInline(L[i++]))}
+    out+=`<p>${b.join('<br>')}</p>`;
+  }
+  return out;
+}
+
+/* ---------- note images: IndexedDB (big quota, local only) ---------- */
+let idbP=null; const imgURL={};
+function idb(){
+  if(!idbP)idbP=new Promise((res,rej)=>{try{const r=indexedDB.open('anat-img',1);r.onupgradeneeded=()=>r.result.createObjectStore('img');r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error)}catch(e){rej(e)}});
+  return idbP;
+}
+async function imgPut(id,blob){const db=await idb();return new Promise((res,rej)=>{const t=db.transaction('img','readwrite');t.objectStore('img').put(blob,id);t.oncomplete=()=>res();t.onerror=()=>rej(t.error)})}
+async function imgGet(id){const db=await idb();return new Promise((res,rej)=>{const r=db.transaction('img').objectStore('img').get(id);r.onsuccess=()=>res(r.result||null);r.onerror=()=>rej(r.error)})}
+async function hydrateImgs(root){
+  for(const el of (root||document).querySelectorAll('img[data-img]:not([src])')){
+    const id=el.dataset.img;
+    try{
+      if(!imgURL[id]){const b=await imgGet(id);if(b)imgURL[id]=URL.createObjectURL(b)}
+      if(imgURL[id])el.src=imgURL[id];
+      else el.outerHTML=`<span class="imgmiss">图片不在这台设备上（可用「恢复」导入含图片的备份）</span>`;
+    }catch(e){el.outerHTML=`<span class="imgmiss">这个浏览器无法读取本地图片</span>`}
+  }
+}
+async function compressImg(file){
+  const bmp=await createImageBitmap(file); const k=Math.min(1,1400/Math.max(bmp.width,bmp.height));
+  const c=document.createElement('canvas'); c.width=Math.round(bmp.width*k); c.height=Math.round(bmp.height*k);
+  const g=c.getContext('2d'); g.fillStyle='#fff'; g.fillRect(0,0,c.width,c.height); g.drawImage(bmp,0,0,c.width,c.height);
+  let b=await new Promise(r=>c.toBlob(r,'image/webp',.82));
+  if(!b||b.type!=='image/webp')b=await new Promise(r=>c.toBlob(r,'image/jpeg',.85));
+  return b;
+}
+async function addImages(files){
+  const it=list[V.idx], ta=$('noteTa'); if(!it||!ta)return;
+  const imgs=[...files].filter(f=>f.type&&f.type.startsWith('image/')); if(!imgs.length)return;
+  $('noteMsg').textContent='正在处理图片…';
+  let ins='';
+  for(const f of imgs){
+    try{const b=await compressImg(f); const id=Date.now().toString(36)+Math.random().toString(36).slice(2,6);
+      await imgPut(id,b); imgURL[id]=URL.createObjectURL(b); ins+=`\n![图](img:${id})\n`;
+    }catch(e){$('noteMsg').textContent='图片保存失败：这个浏览器可能不允许本地存图';return}
+  }
+  const a=ta.selectionStart,z=ta.selectionEnd; ta.value=ta.value.slice(0,a)+ins+ta.value.slice(z);
+  ta.selectionStart=ta.selectionEnd=a+ins.length; ta.focus(); setNote(it,ta.value);
+  $('noteMsg').textContent=`已插入 ${imgs.length} 张图片，点「预览」查看`;
 }
 function setNote(it,v){const t=v.replace(/\s+$/,'');if(t)S.n[it.id]=t;else delete S.n[it.id];save()}
-function openNoteEditor(){editingNote=true;renderStage();const ta=$('noteTa');if(ta){ta.focus();ta.setSelectionRange(ta.value.length,ta.value.length);ta.scrollIntoView({block:'nearest'})}}
+function openNoteEditor(){editingNote=true;notePreview=false;renderStage();const ta=$('noteTa');if(ta){ta.focus();ta.setSelectionRange(ta.value.length,ta.value.length);ta.scrollIntoView({block:'nearest'})}}
 function closeNoteEditor(){editingNote=false;renderRail();renderTop();if(V.view==='note'){const id=list[V.idx]&&list[V.idx].id;buildList(true);const k=list.findIndex(i=>i.id===id);if(k>=0)V.idx=k}renderStage()}
 function selfAssess(it){
   if(!revealed)return `<div class="actions"><button class="btn primary" id="bReveal">显示答案</button><span class="pos">先在心里或纸上作答</span></div>`;
@@ -369,7 +481,7 @@ function exportText(kind){
     if(it.o&&it.o.length&&!(it.f&&it.o.every((o,i)=>o===L5[i])))it.o.forEach((o,i)=>out+=`${L5[i]}. ${o}\n`);
     out+=`答案：${it.a||'（书中无答案）'}\n`;
     if(it.e)out+=`解析：${it.e}\n`;
-    if(S.n[it.id])out+=`我的注释：${S.n[it.id]}\n`;
+    if(S.n[it.id])out+=`我的注释：${S.n[it.id].replace(/!\[[^\]]*\]\(img:[^)]+\)/g,'[图片]')}\n`;
   });
   return out;
 }
@@ -393,20 +505,25 @@ $('expSave').onclick=()=>{
 
 /* ---------- backup / restore (a JSON file the user keeps) ---------- */
 function syncMsg(t){$('syncMsg').textContent=t}
-$('bBackup').onclick=()=>{
+const blobToData=b=>new Promise(r=>{const f=new FileReader();f.onload=()=>r(f.result);f.readAsDataURL(b)});
+$('bBackup').onclick=async()=>{
   const d=new Date(), pad=n=>String(n).padStart(2,'0');
   const name=`anatomy-backup-${d.getFullYear()}${pad(d.getMonth()+1)}${pad(d.getDate())}.json`;
   save(); const banks={}; BANKS.forEach(b=>{const x=lsGet(b.key); if(x)banks[b.id]=x});
-  const blob=new Blob([JSON.stringify({app:'anat-quiz',v:2,saved:d.toISOString(),banks},null,1)],{type:'application/json'});
+  const ids=new Set(); Object.values(banks).forEach(p=>Object.values(p.n||{}).forEach(t=>{for(const m of t.matchAll(/\(img:([A-Za-z0-9_-]+)\)/g))ids.add(m[1])}));
+  const images={}; let miss=0;
+  if(ids.size){syncMsg('正在打包图片…');for(const id of ids){try{const b=await imgGet(id);if(b)images[id]=await blobToData(b);else miss++}catch(e){miss++}}}
+  const blob=new Blob([JSON.stringify({app:'anat-quiz',v:3,saved:d.toISOString(),banks,images},null,1)],{type:'application/json'});
   const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;document.body.appendChild(a);a.click();a.remove();
-  syncMsg('已下载备份文件：'+name);
+  syncMsg(`已下载备份文件：${name}（含图片 ${Object.keys(images).length} 张${miss?'，'+miss+' 张不在本机':''}）`);
 };
 $('bRestore').onclick=()=>$('restoreFile').click();
 $('restoreFile').onchange=e=>{
   const f=e.target.files[0];if(!f)return;
   const r=new FileReader();
-  r.onload=()=>{try{
+  r.onload=async()=>{try{
       const j=JSON.parse(r.result);
+      let nimg=0; for(const [id,data] of Object.entries(j.images||{})){try{const b=await (await fetch(data)).blob();await imgPut(id,b);nimg++}catch(e){}}
       const banks=j.banks||((j.progress||j).d?{zn:j.progress||j}:null);
       if(!banks)throw 0;
       let rec=0,notes=0;
@@ -415,7 +532,7 @@ $('restoreFile').onchange=e=>{
         for(const k of ['d','w','s','m','n'])cur[k]={...(cur[k]||{}),...(p[k]||{})};
         cur.ts=Date.now(); lsSet(b.key,cur); rec+=Object.keys(p.d||{}).length; notes+=Object.keys(p.n||{}).length}
       useBank(BANK);
-      syncMsg(`已恢复：做题记录 ${rec} 条，注释 ${notes} 条（两个题库都已合并）`);
+      syncMsg(`已恢复：做题记录 ${rec} 条，注释 ${notes} 条，图片 ${nimg} 张（两个题库都已合并）`);
     }catch(err){syncMsg('这个文件不是刷题本的备份')}
     e.target.value='';};
   r.readAsText(f,'utf-8');
@@ -445,6 +562,12 @@ $('modes').onclick=e=>{const b=e.target.closest('button');if(!b)return;
   buildList(false);persistView();renderAll()};
 $('chlist').onclick=e=>{const b=e.target.closest('[data-ch]');if(!b)return;V.view='ch';V.ch=+b.dataset.ch;V.filter='all';buildList(false);persistView();renderAll();$('rail').classList.remove('open');$('stage').scrollTop=0};
 $('types').onclick=e=>{if(e.target.closest('#bExport')){openExport();return}const b=e.target.closest('[data-f]');if(!b)return;V.filter=b.dataset.f;buildList(false);persistView();renderTop();renderStage()};
+$('imgFile').onchange=e=>{addImages(e.target.files);e.target.value=''};
+$('lightbox').onclick=()=>{$('lightbox').hidden=true};
+$('stage').addEventListener('paste',e=>{if(e.target.id!=='noteTa')return;const fs=[...(e.clipboardData&&e.clipboardData.files||[])].filter(f=>f.type.startsWith('image/'));if(fs.length){e.preventDefault();addImages(fs)}});
+$('stage').addEventListener('dragover',e=>{if(e.target.id==='noteTa'){e.preventDefault();e.target.classList.add('drag')}});
+$('stage').addEventListener('dragleave',e=>{if(e.target.id==='noteTa')e.target.classList.remove('drag')});
+$('stage').addEventListener('drop',e=>{if(e.target.id!=='noteTa')return;e.target.classList.remove('drag');const fs=[...e.dataTransfer.files].filter(f=>f.type.startsWith('image/'));if(fs.length){e.preventDefault();addImages(fs)}});
 $('stage').addEventListener('input',e=>{if(e.target.id==='noteTa'){const it=list[V.idx];if(it)setNote(it,e.target.value)}});
 $('stage').onclick=e=>{
   const it=list[V.idx];if(!it)return;
@@ -464,8 +587,12 @@ $('stage').onclick=e=>{
   else if(id==='bPage')openPage(it.p,it.ap);
   else if(id==='bNote'||id==='bNoteEdit'){if(editingNote)closeNoteEditor();else openNoteEditor()}
   else if(id==='bNoteDone')closeNoteEditor();
+  else if(id==='bNoteImg')$('imgFile').click();
+  else if(id==='bNotePrev'){notePreview=!notePreview;renderStage();if(!notePreview){const ta=$('noteTa');if(ta){ta.focus();ta.setSelectionRange(ta.value.length,ta.value.length)}}}
+  else if(e.target.matches('.md img[src]')){const lb=$('lightbox');lb.querySelector('img').src=e.target.src;lb.hidden=false}
 };
 document.addEventListener('keydown',e=>{
+  if(!$('lightbox').hidden){if(e.key==='Escape')$('lightbox').hidden=true;return}
   if(!$('viewer').hidden){if(e.key==='Escape')$('viewer').hidden=true;return}
   if(!$('exp').hidden){if(e.key==='Escape')$('exp').hidden=true;return}
   if(e.target.id==='noteTa'&&e.key==='Escape'){closeNoteEditor();return}

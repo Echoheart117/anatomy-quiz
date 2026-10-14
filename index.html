@@ -142,6 +142,7 @@ button:focus-visible,a:focus-visible{outline:2px solid var(--accent);outline-off
 .nav .sp{flex:1}
 .pos{font-family:var(--f-mono);font-size:13px;color:var(--muted)}
 .grid{max-width:760px;margin:22px auto 0;display:flex;flex-wrap:wrap;gap:5px}
+.gridnav{max-width:760px;margin:8px auto 0;display:flex;align-items:center;gap:8px;color:var(--muted);font-size:12px}
 .gsec{width:100%;font-size:12px;color:var(--muted);margin-top:8px}
 .cell{width:34px;height:28px;border-radius:6px;border:1px solid var(--line);background:var(--sheet);font-family:var(--f-mono);font-size:12px;padding:0}
 .cell.r{background:var(--ok-soft);border-color:var(--ok);color:var(--ok)}
@@ -185,7 +186,7 @@ button:focus-visible,a:focus-visible{outline:2px solid var(--accent);outline-off
     <div class="banks" id="banks"></div>
     <div class="modes" id="modes"></div>
     <nav class="chlist" id="chlist" aria-label="章节"></nav>
-    <div class="sync" id="sync">进度只保存在本机浏览器 · <button class="linkbtn" id="bBackup">备份</button> · <button class="linkbtn" id="bRestore">恢复</button><input type="file" id="restoreFile" accept=".json,application/json" hidden><input type="file" id="imgFile" accept="image/*" multiple hidden><div id="syncMsg"></div></div>
+    <div class="sync" id="sync">进度只保存在本机浏览器 · <button class="linkbtn" id="bBackup">备份</button> · <button class="linkbtn" id="bRestore">恢复</button><input type="file" id="restoreFile" accept=".json,application/json" hidden><input type="file" id="imgFile" accept="image/png,image/jpeg,image/webp,image/gif" multiple hidden><div id="syncMsg" role="status" aria-live="polite"></div></div>
   </aside>
   <main class="main">
     <div class="top">
@@ -207,7 +208,7 @@ button:focus-visible,a:focus-visible{outline:2px solid var(--accent);outline-off
 <div class="viewer exp" id="exp" hidden>
   <div class="vbox" role="dialog" aria-label="导出标记的题目">
     <div class="vbar"><span class="vt" id="expTitle">导出「视频没讲」的题</span><span class="msg" id="expMsg"></span><span class="sp"></span>
-      <button class="btn primary" id="expCopy">复制全部</button><button class="btn" id="expSave" hidden>存为 .txt</button><button class="btn" id="expClose">关闭</button></div>
+      <button class="btn primary" id="expCopy">复制全部</button><button class="btn" id="expSave">存为 .txt</button><button class="btn" id="expClose">关闭</button></div>
     <textarea id="expText" readonly></textarea>
   </div>
 </div>
@@ -223,17 +224,48 @@ const BANKS=[
   {id:'3k',name:'三千题',sub:'系统解剖学题库（一）',src:()=>window.QUIZ_DATA_3K,key:'anat3k-progress',vkey:'anat3k-view',pages:'pages3k',maxp:250,pageLabel:'题库'}];
 let BANK=BANKS[0];
 let D=null, ALL=[], figMap={};
-let S={d:{},w:{},s:{},m:{},n:{},ts:0};           // d: qid->1/0 last result, w: qid->wrong count, s: starred
-let V={view:'ch',ch:0,filter:'all',idx:0,order:'seq'};
+let S={d:{},w:{},s:{},m:{},n:{},u:{},ts:0};       // u 保存每个题目字段最近一次修改时间
+const MEM={};
+const LOADED_BANKS=new Set();
+const MEM_VIEWS={};
+const BAD_KEYS=new Set();
+let storageFailed=false;
+let storageNotice='';
+let V={view:'ch',ch:0,filter:'all',idx:0,order:'seq',seed:1,currentId:null};
 let list=[], pick=new Set(), revealed=false, judged=null, editingNote=false, expKind='mark';
 
 const $=id=>document.getElementById(id);
 const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-function lsGet(k){try{return JSON.parse(localStorage.getItem(k)||'null')}catch(e){return null}}
-function lsSet(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}
+function lsGet(key){
+  try{return JSON.parse(localStorage.getItem(key)||'null')}
+  catch(error){
+    BAD_KEYS.add(key);
+    storageFailed=true;
+    storageNotice=`无法读取本机记录「${key}」。原数据已保留，请下载当前内存备份后再恢复。`;
+    syncMsg(storageNotice);
+    return null;
+  }
+}
+function lsSet(key,value){
+  if(BAD_KEYS.has(key)){
+    storageFailed=true;
+    storageNotice=`本机记录「${key}」无法解析，已停止覆盖。当前记录仍保留在内存中，请下载备份。`;
+    syncMsg(storageNotice);
+    return false;
+  }
+  try{
+    localStorage.setItem(key,JSON.stringify(value));
+    return true;
+  }catch(error){
+    storageFailed=true;
+    storageNotice='浏览器存储失败。当前记录仍保留在页面内存中，请立即下载备份。';
+    syncMsg(storageNotice);
+    return false;
+  }
+}
 
 /* ---------- persistence: this browser only (localStorage) ---------- */
-function save(){S.ts=Date.now();lsSet(BANK.key,S)}
+function save(){S.ts=Date.now();MEM[BANK.id]=S;return lsSet(BANK.key,S)}
 
 /* ---------- data ---------- */
 async function load(){
@@ -242,14 +274,17 @@ async function load(){
   useBank(BANKS.find(b=>b.id===want&&b.src())||BANKS.find(b=>b.src()));
 }
 function useBank(b){
+  if(BANK&&LOADED_BANKS.has(BANK.id))MEM[BANK.id]=S;
   BANK=b; lsSet('anat-bank',b.id);
   D=b.src(); ALL=[]; figMap={};
   (D.figs||[]).forEach(f=>figMap[f.id]=f);
   D.chapters.forEach((c,ci)=>c.items.forEach(it=>{it.ci=ci;it.id=ci+'|'+it.t+'|'+it.n;ALL.push(it)}));
-  S={d:{},w:{},s:{},m:{},n:{},ts:0};
-  const saved=lsGet(b.key); if(saved&&saved.d)S=saved; S.m=S.m||{}; S.n=S.n||{};
-  V={view:'ch',ch:0,filter:'all',idx:0,order:'seq'};
-  const v=lsGet(b.vkey); if(v&&v.view)V={...V,...v};
+  S={d:{},w:{},s:{},m:{},n:{},u:{},ts:0};
+  const saved=LOADED_BANKS.has(b.id)?MEM[b.id]:lsGet(b.key); if(saved&&saved.d)S={...S,...saved}; S.m=S.m||{}; S.n=S.n||{}; S.u=S.u||{};
+  for(const field of ['d','w','s','m','n']){S.u[field]=S.u[field]||{};for(const id of Object.keys(S[field]||{}))if(S.u[field][id]===undefined)S.u[field][id]=Number(S.ts||0)}
+  MEM[b.id]=S;LOADED_BANKS.add(b.id);
+  V={view:'ch',ch:0,filter:'all',idx:0,order:'seq',seed:1,currentId:null};
+  const v=MEM_VIEWS[b.id]||lsGet(b.vkey); if(v&&v.view)V={...V,...v};MEM_VIEWS[b.id]=V;
   if(V.ch>=D.chapters.length)V.ch=0;
   $('bankSub').textContent=b.sub;
   $('banks').innerHTML=BANKS.filter(x=>x.src()).map(x=>`<button data-bank="${x.id}" aria-pressed="${x.id===b.id}">${x.name}</button>`).join('');
@@ -257,6 +292,7 @@ function useBank(b){
 }
 
 function buildList(keepIdx){
+  const oldId=keepIdx?V.currentId:null;
   const f=FILTERS.find(x=>x[0]===V.filter)[2];
   let src;
   if(V.view==='wrong') src=ALL.filter(i=>S.w[i.id]&&S.d[i.id]!==1);
@@ -265,9 +301,11 @@ function buildList(keepIdx){
   else if(V.view==='note') src=ALL.filter(i=>S.n[i.id]);
   else src=D.chapters[V.ch].items;
   list=src.filter(f);
-  if(V.order==='rand'){list=list.slice();for(let i=list.length-1;i>0;i--){const j=Math.random()*(i+1)|0;[list[i],list[j]]=[list[j],list[i]]}}
+  if(V.order==='rand'){list=list.slice();let state=(Number(V.seed)||1)>>>0;const rand=()=>{state=(state+0x6D2B79F5)>>>0;let t=state;t=Math.imul(t^(t>>>15),t|1);t^=t+Math.imul(t^(t>>>7),t|61);return ((t^(t>>>14))>>>0)/4294967296};for(let i=list.length-1;i>0;i--){const j=rand()*(i+1)|0;[list[i],list[j]]=[list[j],list[i]]}}
   if(!keepIdx)V.idx=0;
   if(V.idx>=list.length)V.idx=Math.max(0,list.length-1);
+  if(oldId){const same=list.findIndex(i=>i.id===oldId);if(same>=0)V.idx=same}
+  V.currentId=list[V.idx]&&list[V.idx].id||null;
   resetQ();
 }
 function resetQ(){pick=new Set();revealed=false;judged=null;editingNote=false;notePreview=false}
@@ -341,7 +379,7 @@ function renderStage(){
       return `<button class="opt ${cls}" data-o="${l}" ${judged!==null?'disabled':''}><span class="k">${l}</span><span>${esc(txt)}</span><span class="mk">${mk}</span></button>`}).join('')+`</div>`;
     if(judged!==null)h+=`<div class="verdict ${judged?'ok':'bad'}">${judged?'答对了':'答错了'}<span class="ans">答案 ${esc(ans||'?')}</span></div>`;
     if(judged!==null&&it.e)h+=`<div class="expl"><b>解析</b>　${esc(it.e)}</div>`;
-    else if(multi)h+=`<div class="actions"><button class="btn primary" id="bSubmit" ${pick.size?'':'disabled'}>提交</button><span class="pos">多选题，选好后提交</span></div>`;
+    else if(multi&&judged===null)h+=`<div class="actions"><button class="btn primary" id="bSubmit" ${pick.size?'':'disabled'}>提交</button><span class="pos">多选题，选好后提交</span></div>`;
   } else {
     h+=`<p class="stem">${esc(it.s)}</p>`;
     if(revealed)h+=`<div class="answer"><h4>参考答案</h4>${esc(it.a||'（本题书中无答案）')}</div>`+(it.e?`<div class="expl"><b>解析</b>　${esc(it.e)}</div>`:'');
@@ -351,6 +389,7 @@ function renderStage(){
   h+=`</article>`;
   h+=`<div class="nav"><button class="btn" id="bPrev" ${V.idx?'':'disabled'}>上一题</button><span class="pos">${V.idx+1} / ${list.length}</span><span class="sp"></span><button class="btn primary" id="bNext" ${V.idx<list.length-1?'':'disabled'}>下一题</button></div>`;
   h+=`<div class="grid" id="grid">`+gridCells()+`</div>`;
+  if(list.length>100){const pages=Math.ceil(list.length/100),page=Math.floor(V.idx/100);h+=`<div class="gridnav"><button class="linkbtn" data-grid-page="-1" ${page?'':'disabled'}>上一组</button><span>题号导航 ${page+1} / ${pages} 组，每组 100 题</span><button class="linkbtn" data-grid-page="1" ${page<pages-1?'':'disabled'}>下一组</button><span class="sp"></span><label>跳转到<input id="gridJump" type="number" min="1" max="${list.length}" value="${V.idx+1}" style="width:5em;margin-left:5px"></label><button class="linkbtn" id="gridJumpGo">前往</button></div>`}
   h+=`<div class="kbd">键盘：A–E 或 1–5 选择 · Enter 提交/下一题 · ← → 翻题 · 空格 显示答案</div>`;
   st.innerHTML=h;
   hydrateImgs(st);
@@ -432,39 +471,47 @@ async function compressImg(file){
   if(!b||b.type!=='image/webp')b=await new Promise(r=>c.toBlob(r,'image/jpeg',.85));
   return b;
 }
+function supportedImage(file){return !!file&&['image/png','image/jpeg','image/webp','image/gif'].includes(String(file.type||'').toLowerCase())}
 async function addImages(files){
-  const it=list[V.idx], ta=$('noteTa'); if(!it||!ta)return;
-  const imgs=[...files].filter(f=>f.type&&f.type.startsWith('image/')); if(!imgs.length)return;
+  const it=list[V.idx], ta=$('noteTa'), bankId=BANK.id; if(!it||!ta)return;
+  const imgs=[...files].filter(supportedImage); if(!imgs.length){if($('noteMsg'))$('noteMsg').textContent='只支持 PNG、JPEG、WebP 或 GIF 图片';return}
   $('noteMsg').textContent='正在处理图片…';
   let ins='';
   for(const f of imgs){
     try{const b=await compressImg(f); const id=Date.now().toString(36)+Math.random().toString(36).slice(2,6);
       await imgPut(id,b); imgURL[id]=URL.createObjectURL(b); ins+=`\n![图](img:${id})\n`;
-    }catch(e){$('noteMsg').textContent='图片保存失败：这个浏览器可能不允许本地存图';return}
+    }catch(e){if($('noteMsg'))$('noteMsg').textContent='图片保存失败：这个浏览器可能不允许本地存图';return}
   }
+  if(BANK.id!==bankId||!list[V.idx]||list[V.idx].id!==it.id||$('noteTa')!==ta){syncMsg('图片已保存，但当前题目已切换。图片没有插入其他题目的注释。');return}
   const a=ta.selectionStart,z=ta.selectionEnd; ta.value=ta.value.slice(0,a)+ins+ta.value.slice(z);
   ta.selectionStart=ta.selectionEnd=a+ins.length; ta.focus(); setNote(it,ta.value);
   $('noteMsg').textContent=`已插入 ${imgs.length} 张图片，点「预览」查看`;
 }
-function setNote(it,v){const t=v.replace(/\s+$/,'');if(t)S.n[it.id]=t;else delete S.n[it.id];save()}
+function setNote(it,v){const t=v.replace(/\s+$/,'');S.n[it.id]=t;touch('n',it.id);save()}
 function openNoteEditor(){editingNote=true;notePreview=false;renderStage();const ta=$('noteTa');if(ta){ta.focus();ta.setSelectionRange(ta.value.length,ta.value.length);ta.scrollIntoView({block:'nearest'})}}
 function closeNoteEditor(){editingNote=false;renderRail();renderTop();if(V.view==='note'){const id=list[V.idx]&&list[V.idx].id;buildList(true);const k=list.findIndex(i=>i.id===id);if(k>=0)V.idx=k}renderStage()}
 function selfAssess(it){
   if(!revealed)return `<div class="actions"><button class="btn primary" id="bReveal">显示答案</button><span class="pos">先在心里或纸上作答</span></div>`;
   const last=S.d[it.id];
+  if(judged!==null)return `<div class="actions"><span class="pos">本次已记录：${judged?'答对':'答错'}</span><button class="btn primary" id="bNext">下一题</button></div>`;
   return `<div class="actions"><button class="btn ok" id="bGot">我答对了</button><button class="btn bad" id="bMiss">没答对，加入错题本</button>${last===1?'<span class="pos">已标记：会</span>':last===0?'<span class="pos">已标记：不会</span>':''}</div>`;
 }
 function gridCells(){
-  if(list.length>400)return '';
+  const pageSize=100, page=Math.floor(V.idx/pageSize), start=page*pageSize, end=Math.min(list.length,start+pageSize);
   let h='',lastT=null;
-  list.forEach((it,i)=>{if(V.order!=='rand'&&it.t!==lastT&&V.view==='ch'){lastT=it.t;h+=`<div class="gsec">${TYPE_LABEL[it.t]||it.t}</div>`}
+  list.slice(start,end).forEach((it,offset)=>{const i=start+offset;if(V.order!=='rand'&&it.t!==lastT&&V.view==='ch'){lastT=it.t;h+=`<div class="gsec">${TYPE_LABEL[it.t]||it.t}</div>`}
     const d=S.d[it.id];h+=`<button class="cell ${d===1?'r':d===0?'w':''} ${i===V.idx?'cur':''}" data-i="${i}" aria-label="第${i+1}题">${V.view==='ch'?it.n:i+1}</button>`});
   return h;
 }
-function record(it,ok){S.d[it.id]=ok?1:0;if(!ok)S.w[it.id]=(S.w[it.id]||0)+1;save();renderRail();renderTop()}
-function judge(){const it=list[V.idx];const ans=it.t==='判断题'?it.a:ansLetters(it);const got=[...pick].sort().join('');judged=got===ans;record(it,judged);renderStage()}
-function go(d){const n=V.idx+d;if(n<0||n>=list.length)return;if(editingNote){renderRail();renderTop()}V.idx=n;resetQ();persistView();renderStage();$('stage').scrollTop=0}
-function persistView(){lsSet(BANK.vkey,{view:V.view,ch:V.ch,filter:V.filter,idx:V.idx,order:V.order})}
+function touch(field,id){
+  S.u=S.u||{};
+  S.u[field]=S.u[field]||{};
+  S.u[field][id]=Math.max(Date.now(),Number(S.u[field][id]||0)+1);
+}
+function record(it,ok){S.d[it.id]=ok?1:0;touch('d',it.id);if(!ok){S.w[it.id]=(S.w[it.id]||0)+1;touch('w',it.id)}save();renderRail();renderTop()}
+function judge(){if(judged!==null)return;const it=list[V.idx];if(!it||!pick.size)return;const raw=it.t==='判断题'?it.a:ansLetters(it),ans=it.t==='X'?[...new Set(raw)].sort().join(''):raw;const got=[...pick].sort().join('');judged=got===ans;record(it,judged);renderStage()}
+function go(d){const n=V.idx+d;if(n<0||n>=list.length)return;if(editingNote){renderRail();renderTop()}V.idx=n;V.currentId=list[n]&&list[n].id||null;resetQ();persistView();renderStage();$('stage').scrollTop=0}
+function persistView(){V.currentId=list[V.idx]&&list[V.idx].id||null;MEM_VIEWS[BANK.id]={view:V.view,ch:V.ch,filter:V.filter,idx:V.idx,order:V.order,seed:V.seed,currentId:V.currentId};lsSet(BANK.vkey,MEM_VIEWS[BANK.id])}
 function renderAll(){renderRail();renderTop();renderStage()}
 
 /* ---------- export marked questions ---------- */
@@ -504,38 +551,240 @@ $('expSave').onclick=()=>{
 };
 
 /* ---------- backup / restore (a JSON file the user keeps) ---------- */
-function syncMsg(t){$('syncMsg').textContent=t}
+function syncMsg(t){$('syncMsg').textContent=storageFailed?storageNotice:t}
 const blobToData=b=>new Promise(r=>{const f=new FileReader();f.onload=()=>r(f.result);f.readAsDataURL(b)});
+function dataImageBlob(value){
+  const match=String(value||'').match(/^data:(image\/(?:png|jpeg|webp|gif));base64,([A-Za-z0-9+/]+={0,2})$/i);
+  if(!match)return null;
+  try{
+    const binary=atob(match[2]);
+    const bytes=new Uint8Array(binary.length);
+    for(let i=0;i<binary.length;i++)bytes[i]=binary.charCodeAt(i);
+    return new Blob([bytes],{type:match[1].toLowerCase()});
+  }catch(error){
+    return null;
+  }
+}
+function mergeProgress(local,incoming){
+  const fields=['d','w','s','m','n'];
+  const out={...local,u:{...(local.u||{})}};
+  fields.forEach(field=>{out[field]={...(local[field]||{})}});
+
+  for(const field of fields){
+    const localTimes=(local.u||{})[field]||{};
+    const incomingTimes=(incoming.u||{})[field]||{};
+    out.u[field]={...localTimes};
+    const incomingValues=incoming[field]||{};
+
+    for(const id of Object.keys(incomingValues)){
+      const hasLocal=Object.hasOwn(out[field],id);
+      const hasLocalTime=Object.hasOwn(localTimes,id);
+      const hasIncomingTime=Object.hasOwn(incomingTimes,id);
+      const localTime=hasLocalTime?Number(localTimes[id]):hasLocal?Number(local.ts||0):0;
+      const incomingTime=hasIncomingTime?Number(incomingTimes[id]):Number(incoming.ts||0);
+
+      if(!hasLocal||incomingTime>localTime){
+        out[field][id]=incomingValues[id];
+        out.u[field][id]=incomingTime;
+      }
+    }
+  }
+
+  out.ts=Math.max(Number(local.ts||0),Number(incoming.ts||0));
+  return out;
+}
+function backupBanks(j){
+  if(!j||typeof j!=='object'||Array.isArray(j))throw new Error('格式错误');
+  if(j.app!==undefined&&j.app!=='anat-quiz')throw new Error('来源不匹配');
+  if(j.v!==undefined&&(!Number.isInteger(Number(j.v))||Number(j.v)<1||Number(j.v)>4))throw new Error('版本不支持');
+  if(j.saved!==undefined&&!Number.isFinite(Date.parse(j.saved)))throw new Error('备份时间错误');
+  const legacy=j.progress||j.legacyprogress||j;
+  let banks=j.banks||(legacy.d?{zn:legacy}:null);
+  if(!banks&&(legacy.zn||legacy['3k']))banks=legacy;
+  if(!banks&&j.data&&j.data.d)banks={zn:j.data};
+  if(!banks||typeof banks!=='object'||Array.isArray(banks))throw new Error('缺少题库记录');
+  for(const [bankId,progress] of Object.entries(banks)){
+    const bank=BANKS.find(item=>item.id===bankId);
+    if(!bank||!progress||typeof progress!=='object'||Array.isArray(progress))throw new Error('题库结构错误');
+    const ids=new Set();
+    bank.src().chapters.forEach((chapter,chapterIndex)=>chapter.items.forEach(item=>{
+      ids.add(`${chapterIndex}|${item.t}|${item.n}`);
+    }));
+
+    for(const field of ['d','w','s','m','n']){
+      const values=progress[field];
+      if(values===undefined)continue;
+      if(!values||typeof values!=='object'||Array.isArray(values))throw new Error('记录字段错误');
+      for(const [id,value] of Object.entries(values)){
+        if(!ids.has(id))throw new Error('题目编号不属于题库');
+        if(field==='d'&&value!==0&&value!==1)throw new Error('答题记录错误');
+        if(field==='w'&&(typeof value!=='number'||!Number.isFinite(value)||value<0))throw new Error('错题次数错误');
+        if((field==='s'||field==='m')&&![0,1,false,true].includes(value))throw new Error('标记记录错误');
+        if(field==='n'&&typeof value!=='string')throw new Error('注释记录错误');
+      }
+    }
+    if(progress.ts!==undefined&&(typeof progress.ts!=='number'||!Number.isFinite(progress.ts)||progress.ts<0))throw new Error('保存时间错误');
+    if(progress.u!==undefined){
+      if(!progress.u||typeof progress.u!=='object'||Array.isArray(progress.u))throw new Error('时间记录错误');
+      for(const field of ['d','w','s','m','n']){
+        const times=progress.u[field];
+        if(times===undefined)continue;
+        if(!times||typeof times!=='object'||Array.isArray(times))throw new Error('时间记录错误');
+        for(const [id,time] of Object.entries(times))if(!ids.has(id)||typeof time!=='number'||!Number.isFinite(time)||time<0)throw new Error('时间记录错误');
+      }
+    }
+  }
+  if(j.images!==undefined&&(!j.images||typeof j.images!=='object'||Array.isArray(j.images)))throw new Error('图片结构错误');
+  if(j.views!==undefined&&(!j.views||typeof j.views!=='object'||Array.isArray(j.views)))throw new Error('浏览位置结构错误');
+  if(j.currentBank!==undefined&&!BANKS.some(b=>b.id===j.currentBank))throw new Error('当前题库编号错误');
+  return banks;
+}
+function validBackupViews(backup){
+  const views={};
+  const source=backup.views||{};
+  for(const bank of BANKS){
+    const view=source[bank.id];
+    if(!view||typeof view!=='object'||Array.isArray(view))continue;
+    const questionIds=new Set();
+    bank.src().chapters.forEach((chapter,chapterIndex)=>chapter.items.forEach(item=>{
+      questionIds.add(`${chapterIndex}|${item.t}|${item.n}`);
+    }));
+    const total=bank.src().chapters.reduce((count,chapter)=>count+chapter.items.length,0);
+    const normalized={
+      view:view.view||'ch',
+      ch:view.ch===undefined?0:Number(view.ch),
+      filter:view.filter||'all',
+      idx:view.idx===undefined?0:Number(view.idx),
+      order:view.order||'seq',
+      seed:view.seed===undefined?1:Number(view.seed),
+      currentId:view.currentId===undefined?null:view.currentId
+    };
+    if(!['ch','wrong','star','mark','note'].includes(normalized.view))continue;
+    if(!Number.isInteger(normalized.ch)||normalized.ch<0||normalized.ch>=bank.src().chapters.length)continue;
+    if(!FILTERS.some(filter=>filter[0]===normalized.filter))continue;
+    if(!Number.isInteger(normalized.idx)||normalized.idx<0||normalized.idx>total)continue;
+    if(!['seq','rand'].includes(normalized.order))continue;
+    if(!Number.isInteger(normalized.seed)||normalized.seed<1)continue;
+    if(normalized.currentId!==null&&(!questionIds.has(normalized.currentId)||typeof normalized.currentId!=='string'))continue;
+    views[bank.id]=normalized;
+  }
+  return views;
+}
 $('bBackup').onclick=async()=>{
-  const d=new Date(), pad=n=>String(n).padStart(2,'0');
-  const name=`anatomy-backup-${d.getFullYear()}${pad(d.getMonth()+1)}${pad(d.getDate())}.json`;
-  save(); const banks={}; BANKS.forEach(b=>{const x=lsGet(b.key); if(x)banks[b.id]=x});
-  const ids=new Set(); Object.values(banks).forEach(p=>Object.values(p.n||{}).forEach(t=>{for(const m of t.matchAll(/\(img:([A-Za-z0-9_-]+)\)/g))ids.add(m[1])}));
-  const images={}; let miss=0;
-  if(ids.size){syncMsg('正在打包图片…');for(const id of ids){try{const b=await imgGet(id);if(b)images[id]=await blobToData(b);else miss++}catch(e){miss++}}}
-  const blob=new Blob([JSON.stringify({app:'anat-quiz',v:3,saved:d.toISOString(),banks,images},null,1)],{type:'application/json'});
-  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;document.body.appendChild(a);a.click();a.remove();
-  syncMsg(`已下载备份文件：${name}（含图片 ${Object.keys(images).length} 张${miss?'，'+miss+' 张不在本机':''}）`);
+  const date=new Date();
+  const pad=value=>String(value).padStart(2,'0');
+  const name=`anatomy-backup-${date.getFullYear()}${pad(date.getMonth()+1)}${pad(date.getDate())}.json`;
+  save();
+  const banks={};
+  const views={};
+  for(const bank of BANKS){
+    const progress=LOADED_BANKS.has(bank.id)?MEM[bank.id]:lsGet(bank.key);
+    const view=bank.id===BANK.id?V:(MEM_VIEWS[bank.id]||lsGet(bank.vkey));
+    if(progress)banks[bank.id]=progress;
+    if(view)views[bank.id]=view;
+  }
+  banks[BANK.id]=S;
+  const bankSnapshot=JSON.parse(JSON.stringify(banks));
+  const viewSnapshot=JSON.parse(JSON.stringify(views));
+  const currentBank=BANK.id;
+  const imageIds=new Set();
+  for(const progress of Object.values(bankSnapshot)){
+    for(const note of Object.values(progress.n||{})){
+      if(typeof note!=='string')continue;
+      for(const match of note.matchAll(/\(img:([A-Za-z0-9_-]+)\)/g))imageIds.add(match[1]);
+    }
+  }
+
+  const images={};
+  let missingImages=0;
+  if(imageIds.size)syncMsg('正在打包图片…');
+  for(const id of imageIds){
+    try{
+      const image=await imgGet(id);
+      if(image)images[id]=await blobToData(image);
+      else missingImages++;
+    }catch(error){
+      missingImages++;
+    }
+  }
+
+  const backup={app:'anat-quiz',v:4,saved:date.toISOString(),currentBank,
+    banks:bankSnapshot,views:viewSnapshot,images};
+  const blob=new Blob([JSON.stringify(backup,null,1)],{type:'application/json'});
+  const link=document.createElement('a');
+  link.href=URL.createObjectURL(blob);
+  link.download=name;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  syncMsg(`已下载备份文件：${name}（含图片 ${Object.keys(images).length} 张${missingImages?'，'+missingImages+' 张不在本机':''}）`);
 };
 $('bRestore').onclick=()=>$('restoreFile').click();
 $('restoreFile').onchange=e=>{
-  const f=e.target.files[0];if(!f)return;
-  const r=new FileReader();
-  r.onload=async()=>{try{
-      const j=JSON.parse(r.result);
-      let nimg=0; for(const [id,data] of Object.entries(j.images||{})){try{const b=await (await fetch(data)).blob();await imgPut(id,b);nimg++}catch(e){}}
-      const banks=j.banks||((j.progress||j).d?{zn:j.progress||j}:null);
-      if(!banks)throw 0;
-      let rec=0,notes=0;
-      for(const b of BANKS){const p=banks[b.id];if(!p)continue;
-        const cur=lsGet(b.key)||{d:{},w:{},s:{},m:{},n:{}};
-        for(const k of ['d','w','s','m','n'])cur[k]={...(cur[k]||{}),...(p[k]||{})};
-        cur.ts=Date.now(); lsSet(b.key,cur); rec+=Object.keys(p.d||{}).length; notes+=Object.keys(p.n||{}).length}
-      useBank(BANK);
-      syncMsg(`已恢复：做题记录 ${rec} 条，注释 ${notes} 条，图片 ${nimg} 张（两个题库都已合并）`);
-    }catch(err){syncMsg('这个文件不是刷题本的备份')}
-    e.target.value='';};
-  r.readAsText(f,'utf-8');
+  const file=e.target.files[0];
+  if(!file)return;
+  const reader=new FileReader();
+  reader.onload=async()=>{
+    try{
+      const backup=JSON.parse(reader.result);
+      const banks=backupBanks(backup);
+      const views=validBackupViews(backup);
+      let imageCount=0;
+
+      for(const [id,dataUrl] of Object.entries(backup.images||{})){
+        if(!/^[A-Za-z0-9_-]{1,100}$/.test(id))continue;
+        const image=dataImageBlob(dataUrl);
+        if(!image)continue;
+        try{
+          if(imgURL[id]){
+            URL.revokeObjectURL(imgURL[id]);
+            delete imgURL[id];
+          }
+          await imgPut(id,image);
+          imageCount++;
+        }catch(error){
+          // 一张图片导入失败时，继续恢复其它记录。
+        }
+      }
+
+      let recordCount=0;
+      let noteCount=0;
+      for(const bank of BANKS){
+        const rawProgress=banks[bank.id];
+        if(!rawProgress)continue;
+        const backupTime=Date.parse(backup.saved)||0;
+        const incoming={...rawProgress,ts:Number(rawProgress.ts||backupTime)};
+        const current=LOADED_BANKS.has(bank.id)
+          ? MEM[bank.id]
+          : lsGet(bank.key);
+        const empty={d:{},w:{},s:{},m:{},n:{},u:{},ts:0};
+        const merged=mergeProgress(current||empty,incoming);
+        merged.ts=Math.max(Date.now(),Number(merged.ts||0)+1);
+        MEM[bank.id]=merged;
+        LOADED_BANKS.add(bank.id);
+        lsSet(bank.key,merged);
+        recordCount+=Object.keys(incoming.d||{}).length;
+        noteCount+=Object.values(incoming.n||{}).filter(Boolean).length;
+      }
+
+      for(const bank of BANKS){
+        const view=views[bank.id];
+        if(!view)continue;
+        MEM_VIEWS[bank.id]=view;
+        lsSet(bank.vkey,view);
+      }
+
+      const restoreBank=BANKS.find(bank=>bank.id===backup.currentBank)||BANK;
+      if(MEM[BANK.id])S=MEM[BANK.id];
+      useBank(restoreBank);
+      syncMsg(`已合并恢复：做题记录 ${recordCount} 条，注释 ${noteCount} 条，图片 ${imageCount} 张。较新的本机记录和取消状态已保留。`);
+    }catch(error){
+      syncMsg('这个文件不是刷题本的备份');
+    }finally{
+      e.target.value='';
+    }
+  };
+  reader.readAsText(file,'utf-8');
 };
 
 /* ---------- page viewer ---------- */
@@ -558,16 +807,16 @@ $('viewer').addEventListener('click',e=>{if(e.target.id==='viewer')$('viewer').h
 $('menu').onclick=()=>$('rail').classList.toggle('open');
 $('banks').onclick=e=>{const b=e.target.closest('[data-bank]');if(!b||b.dataset.bank===BANK.id)return;useBank(BANKS.find(x=>x.id===b.dataset.bank));$('stage').scrollTop=0};
 $('modes').onclick=e=>{const b=e.target.closest('button');if(!b)return;
-  if(b.dataset.o){V.order=V.order==='rand'?'seq':'rand'}else{V.view=b.dataset.v;V.filter='all'}
+  if(b.dataset.o){V.order=V.order==='rand'?'seq':'rand';if(V.order==='rand')V.seed=(Date.now()^Math.floor(Math.random()*0xffffffff))>>>0;V.currentId=null}else{V.view=b.dataset.v;V.filter='all';V.currentId=null}
   buildList(false);persistView();renderAll()};
 $('chlist').onclick=e=>{const b=e.target.closest('[data-ch]');if(!b)return;V.view='ch';V.ch=+b.dataset.ch;V.filter='all';buildList(false);persistView();renderAll();$('rail').classList.remove('open');$('stage').scrollTop=0};
 $('types').onclick=e=>{if(e.target.closest('#bExport')){openExport();return}const b=e.target.closest('[data-f]');if(!b)return;V.filter=b.dataset.f;buildList(false);persistView();renderTop();renderStage()};
 $('imgFile').onchange=e=>{addImages(e.target.files);e.target.value=''};
 $('lightbox').onclick=()=>{$('lightbox').hidden=true};
-$('stage').addEventListener('paste',e=>{if(e.target.id!=='noteTa')return;const fs=[...(e.clipboardData&&e.clipboardData.files||[])].filter(f=>f.type.startsWith('image/'));if(fs.length){e.preventDefault();addImages(fs)}});
+$('stage').addEventListener('paste',e=>{if(e.target.id!=='noteTa')return;const fs=[...(e.clipboardData&&e.clipboardData.files||[])].filter(supportedImage);if(fs.length){e.preventDefault();addImages(fs)}});
 $('stage').addEventListener('dragover',e=>{if(e.target.id==='noteTa'){e.preventDefault();e.target.classList.add('drag')}});
 $('stage').addEventListener('dragleave',e=>{if(e.target.id==='noteTa')e.target.classList.remove('drag')});
-$('stage').addEventListener('drop',e=>{if(e.target.id!=='noteTa')return;e.target.classList.remove('drag');const fs=[...e.dataTransfer.files].filter(f=>f.type.startsWith('image/'));if(fs.length){e.preventDefault();addImages(fs)}});
+$('stage').addEventListener('drop',e=>{if(e.target.id!=='noteTa')return;e.target.classList.remove('drag');const fs=[...e.dataTransfer.files].filter(supportedImage);if(fs.length){e.preventDefault();addImages(fs)}});
 $('stage').addEventListener('input',e=>{if(e.target.id==='noteTa'){const it=list[V.idx];if(it)setNote(it,e.target.value)}});
 $('stage').onclick=e=>{
   const it=list[V.idx];if(!it)return;
@@ -575,15 +824,17 @@ $('stage').onclick=e=>{
   if(o&&judged===null&&it.t==='判断题'){pick=new Set([o.dataset.o]);judge();return}
   if(o&&judged===null){const l=o.dataset.o;
     if(it.t==='X'){pick.has(l)?pick.delete(l):pick.add(l);renderStage()}else{pick=new Set([l]);judge()}return}
-  const c=e.target.closest('.cell');if(c){V.idx=+c.dataset.i;resetQ();persistView();renderStage();return}
+  const c=e.target.closest('.cell');if(c){V.idx=+c.dataset.i;V.currentId=list[V.idx]&&list[V.idx].id||null;resetQ();persistView();renderStage();return}
+  const gp=e.target.closest('[data-grid-page]');if(gp){const page=Math.floor(V.idx/100)+Number(gp.dataset.gridPage);V.idx=Math.min(list.length-1,Math.max(0,page*100));V.currentId=list[V.idx]&&list[V.idx].id||null;persistView();renderStage();return}
+  if(e.target.id==='gridJumpGo'){const field=$('gridJump'),n=Number(field.value);if(Number.isInteger(n)&&n>=1&&n<=list.length){V.idx=n-1;V.currentId=list[V.idx].id;persistView();renderStage()}return}
   const id=e.target.id;
   if(id==='bSubmit')judge();
   else if(id==='bNext')go(1);else if(id==='bPrev')go(-1);
   else if(id==='bReveal'){revealed=true;renderStage()}
-  else if(id==='bGot'){record(it,true);go(1)||renderStage()}
-  else if(id==='bMiss'){record(it,false);renderStage()}
-  else if(id==='bStar'){S.s[it.id]?delete S.s[it.id]:S.s[it.id]=1;save();renderRail();renderStage()}
-  else if(id==='bMark'){S.m[it.id]?delete S.m[it.id]:S.m[it.id]=1;save();renderRail();if(V.view==='mark')renderTop();renderStage()}
+  else if(id==='bGot'&&judged===null){judged=true;record(it,true);go(1)||renderStage()}
+  else if(id==='bMiss'&&judged===null){judged=false;record(it,false);renderStage()}
+  else if(id==='bStar'){S.s[it.id]=S.s[it.id]?0:1;touch('s',it.id);save();renderRail();renderStage()}
+  else if(id==='bMark'){S.m[it.id]=S.m[it.id]?0:1;touch('m',it.id);save();renderRail();if(V.view==='mark')renderTop();renderStage()}
   else if(id==='bPage')openPage(it.p,it.ap);
   else if(id==='bNote'||id==='bNoteEdit'){if(editingNote)closeNoteEditor();else openNoteEditor()}
   else if(id==='bNoteDone')closeNoteEditor();
